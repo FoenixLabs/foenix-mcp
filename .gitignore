@@ -97,3 +97,8 @@ lvboot/build/
 # Backup copies made by hand
 *.bak
 *.before_*
+# Programs built for the board
+*.pgz
+*.s37
+# Generated from splash_*.bmp by rsrc/bitmaps/bmp2c.py during the build
+src/rsrc/bitmaps/splash_*.c

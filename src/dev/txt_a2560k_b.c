@@ -165,17 +165,29 @@ short txt_a2560k_b_set_mode(short mode) {
 /**
  * Set the display resolution of the screen
  *
- * @param width the desired horizontal resolution in pixels
- * @param height the desired veritical resolution in pixels
+ * The resolution always follows the hi-res DIP switch (MCR bit 30):
+ * on = 1280 x 1024, off = 1280 x 960. The width and height asked for are ignored.
  *
- * @return 0 on success, any other number means the resolution is unsupported
+ * @param width the desired horizontal resolution in pixels (ignored)
+ * @param height the desired veritical resolution in pixels (ignored)
+ *
+ * @return 0 (the DIP switch resolution is always supported)
  */
 short txt_a2560k_b_set_resolution(short width, short height) {
     int i;
-    unsigned int * VKYII_LGCY_CFG           = (void *) 0xFEC80000;    
+    unsigned int * VKYII_LGCY_CFG           = (void *) 0xFEC80000;
     //width = 1280;
     //height= 1024;
+
+    /*
+     * 2.0.28 fix: the mode bit (bit 8, VKY3_B_MODE0) must also go into msr_shadow_b.
+     * txt_a2560k_b_set_mode() writes the whole register from msr_shadow_b, and the CLI
+     * calls it after every command (cli_ensure_console). Without the bit in the shadow
+     * that call switched the screen back to 1280 x 960 while the kernel kept counting
+     * rows for 1280 x 1024, so the last 3 lines printed fell below the screen.
+     */
     if ( *VKYII_LGCY_CFG & 0x40000000 ) { // Check the HiRes-DipSwitch
+            msr_shadow_b |= VKY3_B_MODE0;
             *VKYII_LGCY_CFG = *VKYII_LGCY_CFG | 0x00000100;
             // Update the kernel variables
             a2560k_b_resolution.width = 1280;
@@ -184,13 +196,17 @@ short txt_a2560k_b_set_resolution(short width, short height) {
             txt_a2560k_b_set_sizes();
     }
     else {
+            msr_shadow_b &= ~VKY3_B_MODE0;
             *VKYII_LGCY_CFG = *VKYII_LGCY_CFG & 0xFFFFFEFF;
             // Update the kernel variables
             a2560k_b_resolution.width = 1280;
             a2560k_b_resolution.height = 960;
             // Recalculate the size of the screen
             txt_a2560k_b_set_sizes();
-    }    
+    }
+
+    /* The function used to end without a return, so callers got a random value */
+    return 0;
 /*
     for (i = 0; i < a2560k_b_caps.resolution_count; i++) {
         if ((a2560k_b_caps.resolutions[i].width == width) && (a2560k_b_caps.resolutions[i].height == height)) {
