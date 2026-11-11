@@ -1,0 +1,94 @@
+ Volume in drive E is Foenix Labs
+ Volume Serial Number is 04C7-4BF1
+
+ Directory of E:\FoenixMCP-A2560Xxx\src
+
+2026-01-02  06:00 PM    <DIR>          .
+2026-01-02  06:00 PM    <DIR>          ..
+2026-02-06  11:46 PM            43,936 boot.asm
+2024-03-16  11:10 PM            21,317 boot.c
+2023-12-07  01:21 PM             1,106 boot.h
+2023-12-07  01:21 PM                 0 build.log
+2024-12-20  08:14 PM                59 c256.ini
+2026-02-06  03:00 AM               126 CompileFlash.bat
+2026-02-06  03:00 AM               124 CompileFlashGenX.bat
+2026-02-06  03:00 AM               131 CompileFlash_A2560U.bat
+2026-02-06  03:00 AM               126 CompileFlash_A2560X.bat
+2026-02-06  03:01 AM               122 CompileRAMGenX.bat
+2026-02-06  03:01 AM                88 CompileRAM_A2560K.bat
+2026-02-06  03:01 AM               124 CompileRAM_A2560X.bat
+2024-10-01  08:14 PM           524,288 emutos-a2560x.bin
+2024-10-01  08:14 PM           524,288 emutos-a2560x.rom
+2024-11-12  03:57 AM               166 emutos_run.bat
+2024-11-10  04:05 AM           524,288 foenixmcp - A2560Kxx.bin
+2026-02-06  11:46 PM            37,476 foenixmcp.asm
+2026-02-06  11:46 PM           524,288 foenixmcp.bin
+2024-11-03  01:23 AM             8,618 foenixmcp.c
+2025-01-18  05:02 AM           432,204 foenixmcp.s68
+2025-01-18  05:02 AM           524,288 foenixmcp_A2560K_Classic.bin
+2025-11-05  11:54 PM           524,288 foenixmcp_nop.bin
+2025-11-05  11:47 PM           524,288 foenixmcp_nop.bin.bak
+2024-11-12  04:11 AM         1,115,245 foenixmcp_Vince.s68
+2026-02-06  11:46 PM             3,001 indicators.asm
+2023-12-07  01:21 PM             3,398 indicators.c
+2023-12-07  01:21 PM             1,329 indicators.h
+2026-02-06  11:46 PM             4,871 interrupt.asm
+2023-12-07  01:21 PM             5,412 interrupt.c
+2023-12-07  01:21 PM            11,326 interrupt.h
+2024-10-01  09:38 PM             1,294 ldemutos.bin
+2024-10-01  08:14 PM               787 ldemutos.s28
+2026-02-06  11:46 PM            28,989 log.asm
+2023-12-07  01:21 PM            10,611 log.c
+2024-03-16  09:56 PM             7,313 log.h
+2023-12-07  01:21 PM               614 log_level.h
+2026-02-07  12:02 AM             9,601 Makefile
+2023-12-07  01:21 PM             1,930 Makefile.PeterC256
+2023-12-07  01:21 PM             4,998 Makefile_old
+2026-02-06  11:46 PM           299,740 mapfile
+2025-11-04  02:28 AM           524,288 MCP A2560K60 Nov5th_2025.bin
+2026-02-06  11:46 PM               752 memory.asm
+2023-12-07  01:21 PM             1,371 memory.c
+2023-12-07  01:21 PM             1,236 memory.h
+2023-12-07  01:21 PM               405 newbuild.py
+2026-02-06  11:46 PM             2,491 proc.asm
+2024-03-04  03:20 AM             2,480 proc.c
+2023-12-07  01:21 PM             1,196 proc.h
+2026-02-06  11:46 PM             1,986 ring_buffer.asm
+2023-12-07  01:21 PM             1,065 ring_buffer.c
+2023-12-07  01:21 PM               881 ring_buffer.h
+2023-12-07  01:21 PM               111 run.bat
+2026-02-06  11:46 PM            30,010 simpleio.asm
+2023-12-07  01:21 PM            10,368 simpleio.c
+2023-12-07  01:21 PM             2,506 simpleio.h
+2026-02-06  11:46 PM            21,098 syscalls.asm
+2023-12-07  01:21 PM            23,831 syscalls.c
+2026-02-06  11:46 PM             8,253 sys_general.asm
+2023-12-07  01:21 PM             9,349 sys_general.c
+2023-12-07  01:21 PM             4,049 sys_general.h
+2026-02-06  11:46 PM               802 timers.asm
+2023-12-07  01:21 PM               969 timers.c
+2023-12-07  01:21 PM               276 timers.h
+2026-02-06  11:46 PM             1,906 utilities.asm
+2023-12-07  01:21 PM             1,780 utilities.c
+2023-12-07  01:21 PM             1,072 utilities.h
+2026-02-06  11:46 PM             2,907 variables.asm
+2023-12-07  01:21 PM             3,362 variables.c
+2023-12-07  01:21 PM               622 variables.h
+2024-03-22  01:18 AM               152 version.h
+2026-02-06  11:46 PM            42,022 vicky3_txt_a_logger.asm
+2023-12-07  01:21 PM             3,989 vicky3_txt_a_logger.c
+2023-12-07  01:21 PM               288 vicky3_txt_a_logger.h
+2026-01-02  06:00 PM    <DIR>          .vscode
+2026-01-02  06:00 PM    <DIR>          bin
+2026-01-02  06:00 PM    <DIR>          C256
+2026-01-02  06:00 PM    <DIR>          cli
+2026-01-02  06:00 PM    <DIR>          dev
+2026-01-02  06:00 PM    <DIR>          fatfs
+2026-01-02  06:00 PM    <DIR>          include
+2026-01-02  06:00 PM    <DIR>          m68040
+2026-01-02  06:00 PM    <DIR>          m68k
+2026-01-02  06:00 PM    <DIR>          rsrc
+2026-01-02  06:00 PM    <DIR>          snd
+2026-02-07  12:04 AM                35 8bat
+              74 File(s)      6,434,106 bytes
+              13 Dir(s)  1,911,766,908,928 bytes free
