@@ -88,8 +88,10 @@ and in the command line banner. An MCP with the caches off shows plain
 **In the boot loader's menu** (lvboot 1.3, in flash block 0), an entry that
 holds MCP 2.0.30 or later is now shown as **"MCP 2.0.30c"** or
 **"MCP 2.0.30"**, whatever `BOOT.CFG` calls it. Other entries (EmuTOS, older
-MCPs) keep their `BOOT.CFG` name and start exactly as before: tested with
-EmuTOS in block 2.
+MCPs) keep their `BOOT.CFG` name and start exactly as before. Without a
+`BOOT.CFG`, lvboot lists the non-blank blocks itself: the MCP then still shows
+as "MCP 2.0.30c", the others as "Flash block 2" and so on (tested with
+EmuTOS in block 2, which starts fine from the menu).
 
 How lvboot knows: every MCP image now carries a small **info record** in its
 exception vector table, in slots 16-19 (offset `$40` of the image). The
