@@ -1,6 +1,6 @@
 # Gen1 LVGL boot loader (K25 first)
 
-**1.3 (2026-11-13):** an entry whose flash block holds MCP 2.0.30 or later is shown as "MCP 2.0.30 caches ON" / "OFF",
+**1.3 (2026-11-13):** an entry whose flash block holds MCP 2.0.30 or later is shown as "MCP 2.0.30c" (c = caches on) or "MCP 2.0.30",
 from the MCP info record at offset `$40` of the block (see the main README, version 2.0.30). The Makefile also builds on
 macOS / Linux now: `VBCC=../vbcc PATH=~/opt/vbcc/bin:$PATH make MACHINE=K25`.
 

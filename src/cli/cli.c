@@ -477,7 +477,7 @@ short cmd_sysinfo(short channel, int argc, const char * argv[]) {
     sprintf(buffer, "FPGA Version: %04X.%04X\n", cli_sys_info.fpga_version, cli_sys_info.fpga_subver);
     print(channel, buffer);
 
-    sprintf(buffer, "MCP version: v%02u.%02u.%04u\n", cli_sys_info.mcp_version, cli_sys_info.mcp_rev, cli_sys_info.mcp_build);
+    sprintf(buffer, "MCP version: v%02u.%02u.%04u%s\n", cli_sys_info.mcp_version, cli_sys_info.mcp_rev, cli_sys_info.mcp_build, VER_SUFFIX);
     print(channel, buffer);
 
     sprintf(buffer, "CPU cache: %s\n", cache_state_text());   /* 2.0.30: read from the CPU */
@@ -763,7 +763,12 @@ short cmd_credits(short channel, int argc, const char * argv[]) {
 
     print(channel, "\n");
 
-    sprintf(line, "| Version       | %02d.%02d-alpha+%04d                                  |\n", VER_MAJOR, VER_MINOR, VER_BUILD);
+    {
+        /* 2.0.30: VER_SUFFIX ("c" = caches on) makes the text one longer, so pad it to the box width */
+        char ver[24];
+        sprintf(ver, "%02d.%02d-alpha+%04d%s", VER_MAJOR, VER_MINOR, VER_BUILD, VER_SUFFIX);
+        sprintf(line, "| Version       | %-50s|\n", ver);
+    }
     print_box(channel, "{-------------------------------------------------------------------}\n");
     print_box(channel, "| Foenix/MCP - A simple OS for Foenix Retro Systems computers       |\n");
     print_box(channel, ">---------------!---------------------------------------------------<\n");
@@ -1079,7 +1084,7 @@ void cli_setup_screen(short channel, const char * path, short is_active) {
     //INFO(" EXITING   print_banner(channel, cli_sys_info.model);<<<<<<<<<<<<<<<<");
 
 
-    sprintf(message, "\nFoenix/MCP v%02u.%02u.%04u\n\n", (unsigned int)cli_sys_info.mcp_version, (unsigned int)cli_sys_info.mcp_rev, (unsigned int)cli_sys_info.mcp_build);
+    sprintf(message, "\nFoenix/MCP v%02u.%02u.%04u%s\n\n", (unsigned int)cli_sys_info.mcp_version, (unsigned int)cli_sys_info.mcp_rev, (unsigned int)cli_sys_info.mcp_build, VER_SUFFIX);
     print(channel, message);   
     print(channel, "Type HELP or ? for help.\n");
 }

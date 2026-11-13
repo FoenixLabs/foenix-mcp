@@ -79,11 +79,17 @@ build: the MCP finds out at start-up which board it runs on.
 
 ### Version 2.0.30: the boot menu shows which MCP is in the flash
 
+**A "c" after the version number means the CPU caches are on.** A cached
+MCP calls itself `2.0.30c` everywhere: on its boot screen
+(`FOENIX/MCP V: 02.0000.0030c`), in `SYSINFO` (`MCP version: v02.00.0030c`)
+and in the command line banner. An MCP with the caches off shows plain
+`2.0.30`. (`VER_SUFFIX` in `src/version.h`.)
+
 **In the boot loader's menu** (lvboot 1.3, in flash block 0), an entry that
-holds MCP 2.0.30 or later is now shown as, for example,
-**"MCP 2.0.30 caches ON"** or **"MCP 2.0.30 caches OFF"**, whatever `BOOT.CFG`
-calls it. Other entries (EmuTOS, older MCPs) keep their `BOOT.CFG` name and
-start exactly as before.
+holds MCP 2.0.30 or later is now shown as **"MCP 2.0.30c"** or
+**"MCP 2.0.30"**, whatever `BOOT.CFG` calls it. Other entries (EmuTOS, older
+MCPs) keep their `BOOT.CFG` name and start exactly as before: tested with
+EmuTOS in block 2.
 
 How lvboot knows: every MCP image now carries a small **info record** in its
 exception vector table, in slots 16-19 (offset `$40` of the image). The

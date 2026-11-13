@@ -6,6 +6,7 @@
 
 #include "log_level.h"
 #include "cache.h"
+#include "version.h"
 #ifndef DEFAULT_LOG_LEVEL
     #define DEFAULT_LOG_LEVEL LOG_TRACE
 #endif
@@ -357,7 +358,7 @@ short boot_screen(void) {
     region.size.height = 20;
     txt_set_region(screen, &region);
 
-    sprintf(buffer, "\x1b[HFOENIX/MCP V: %02u.%04u.%04u\n", info.mcp_version, info.mcp_rev, info.mcp_build);
+    sprintf(buffer, "\x1b[HFOENIX/MCP V: %02u.%04u.%04u%s\n", info.mcp_version, info.mcp_rev, info.mcp_build, VER_SUFFIX);
     print(screen, buffer);
     str_upcase(info.model_name, entry);
     sprintf(buffer, "       MODEL: %s\n", entry);
