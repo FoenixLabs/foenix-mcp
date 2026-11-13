@@ -84,15 +84,21 @@ second kind of image, built with `CACHE=1`, that switches the data and
 instruction caches on. Each release has both: `..._cache.bin` has the caches
 on, the image without `_cache` is the same MCP with the caches off.
 
-**How much faster?** Measured on an A2560K25:
+**How much faster?** Measured on an A2560K25 (68040 at 25 MHz) with
+`tests/cachebench` and FELINC:
 
-| Test | Caches off | Caches on |
-|---|---|---|
-| FELINC TCP fetch of 1 MB (`felinc_test`, key `b`) | 230 KB/s | 440 KB/s |
-| `tests/cachebench`, CPU (50 sieve runs) | | 3000 ms |
+| Test | Caches off | Caches on | Faster |
+|---|---|---|---|
+| loop: 2 million rounds of arithmetic in CPU registers | 2483 ms | 1033 ms | 2.4 x |
+| read: the same 4 KB read 500 times | 650 ms | 133 ms | 4.9 x |
+| sieve: 50 runs of the sieve of Eratosthenes (8192 numbers) | 3066 ms | 933 ms | 3.3 x |
+| memory: 8 MB copied with `memcpy` | 8766 ms | 3466 ms | 2.5 x |
+| screen: 200 lines printed through the MCP console | 11716 ms | 3933 ms | 3.0 x |
+| FELINC TCP fetch of 1 MB (`felinc_test`, key `b`) | 235 KB/s | 440 KB/s | 1.9 x |
 
-Code and data in RAM gain the most. Screen output gains little: the text
-screen is a register block, and register blocks are never cached.
+The program's code and data were in SRAM. Everything gains: the MCP's own
+code (in flash) is cached too, which is why even printing to the screen,
+whose text memory is never cached, runs three times as fast.
 
 **What the cached MCP does:**
 
