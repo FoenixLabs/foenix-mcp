@@ -48,12 +48,11 @@ static void g1t_run(int (*fn)(void), u32 mode, long secs)
 
     /* 2.0.29: these tests let the GDMA, the blitter and the DAC write memory that the CPU then checks.
        The CPU does not see those writes, so in a CACHE=1 build its data cache could hold old copies.
-       The tests were written for an MCP without caches: run them with the data cache off. */
-    {
-        unsigned long cacr = cache_data_off();
-        fn();
-        cache_restore(cacr);
-    }
+       The tests were written for an MCP without caches: run them with the data cache off.
+       2.0.30: cache_resume sets the caches up anew, it does not depend on a saved value. */
+    cache_data_off();
+    fn();
+    cache_resume();
 }
 
 /* ---- TEST DAC [0|2|3] [seconds]: 0 = the 19 functional checks, 2 = test tone, 3 = scales + chord (listening) ---- */

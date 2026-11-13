@@ -12,7 +12,7 @@
             xdef _cache_hw_enable
             xdef _cache_flush
             xdef _cache_data_off
-            xdef _cache_restore
+            xdef _cache_get_cacr
 
 ;
 ; Interrupt registers for A2560X/K and GenX
@@ -20,6 +20,27 @@
 PENDING_GRP0 = $FEC00100
 PENDING_GRP1 = $FEC00102
 PENDING_GRP2 = $FEC00104
+
+;
+; 2.0.30: values for the MCP info record in vectors 16-19 (see below). The Makefile passes the version
+; from version.h as MCP_VER_MAJOR / MCP_VER_MINOR / MCP_VER_BUILD; without them the record says 0.0.0.
+;
+        ifnd MCP_VER_MAJOR
+MCP_VER_MAJOR = 0
+        endif
+        ifnd MCP_VER_MINOR
+MCP_VER_MINOR = 0
+        endif
+        ifnd MCP_VER_BUILD
+MCP_VER_BUILD = 0
+        endif
+        ifd CACHE_ON
+MCP_INFO_FLAGS = 1                  ; bit 0: this MCP switches the CPU caches on
+        else
+MCP_INFO_FLAGS = 0
+        endif
+MCP_INFO_MAGIC = $4D435049          ; "MCPI"
+MCP_INFO_VER = (MCP_VER_MAJOR<<24)|(MCP_VER_MINOR<<16)|MCP_VER_BUILD
 
             section "VECTORS",code
 
@@ -39,10 +60,15 @@ PENDING_GRP2 = $FEC00104
             dc.l not_impl           ; 13 - Reserved
             dc.l not_impl           ; 14 - Format error
             dc.l not_impl           ; 15 - Uninitialized Interrupt Error
-            dc.l not_impl           ; 16 - Reserved
-            dc.l not_impl           ; 17 - Reserved
-            dc.l not_impl           ; 18 - Reserved
-            dc.l not_impl           ; 19 - Reserved
+            ;
+            ; 16-19: 2.0.30 MCP info record, read from flash by the boot loader (lvboot) to show
+            ; "MCP 2.0.30 caches ON" in its menu. The 68040 and 68060 never use vectors 16-23
+            ; (reserved by Motorola), so these four longs are free for data. Offset $40 in the image.
+            ;
+            dc.l MCP_INFO_MAGIC     ; 16 - "MCPI"
+            dc.l MCP_INFO_VER       ; 17 - version: major (bits 31-24), minor (23-16), build (15-0)
+            dc.l MCP_INFO_FLAGS     ; 18 - flags: bit 0 = CPU caches on
+            dc.l MCP_INFO_MAGIC^MCP_INFO_VER^MCP_INFO_FLAGS ; 19 - check: the three longs above XOR-ed
             dc.l not_impl           ; 20 - Reserved
             dc.l not_impl           ; 21 - Reserved
             dc.l not_impl           ; 22 - Reserved
@@ -463,6 +489,10 @@ _call_user:
             nop
             cpusha  bc
             nop
+            ; 2.0.30: and set the caches up again. A program can get into supervisor mode and change the
+            ; cache registers (a test build of felinc_test did); without this the caches stayed the way
+            ; that program left them, for every program after it.
+            bsr     _cache_hw_enable
         endif
             rte                         ; Start the user process
 
@@ -519,32 +549,26 @@ _cache_flush:
             rts
 
 ;
-; unsigned long cache_data_off(void) - switch only the data cache off, return the old CACR
+; void cache_data_off(void) - switch only the data cache off (cache_hw_enable switches it on again)
 ; For code that lets the GDMA or the blitter write memory the CPU then reads (the TEST commands):
 ; the 68040 does not snoop, so with the data cache on it could read old copies.
 ;
 _cache_data_off:
-            moveq   #0,d0
         ifd CACHE_ON
-            movec   cacr,d0             ; d0 = the value to give back to cache_restore
-            move.l  d0,d1
-            and.l   #$7FFFFFFF,d1       ; DE off, instruction cache unchanged
+            movec   cacr,d0
+            and.l   #$7FFFFFFF,d0       ; DE off, instruction cache unchanged
             nop
             cpusha  dc                  ; changed data to memory first (write-through: normally nothing)
-            movec   d1,cacr
+            movec   d0,cacr
             nop
         endif
             rts
 
 ;
-; void cache_restore(unsigned long cacr) - put back the CACR value from cache_data_off
+; unsigned long cache_get_cacr(void) - read the CPU's cache control register
+; 2.0.30: lets the boot screen and SYSINFO show what the caches really do (bit 31 = data cache on,
+; bit 15 = instruction cache on), also in a normal build.
 ;
-_cache_restore:
-        ifd CACHE_ON
-            move.l  (4,a7),d0
-            nop
-            cinva   dc                  ; memory may have changed while the data cache was off
-            movec   d0,cacr
-            nop
-        endif
+_cache_get_cacr:
+            movec   cacr,d0
             rts

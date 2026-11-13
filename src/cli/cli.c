@@ -480,7 +480,7 @@ short cmd_sysinfo(short channel, int argc, const char * argv[]) {
     sprintf(buffer, "MCP version: v%02u.%02u.%04u\n", cli_sys_info.mcp_version, cli_sys_info.mcp_rev, cli_sys_info.mcp_build);
     print(channel, buffer);
 
-    sprintf(buffer, "CPU cache: %s\n", cache_is_on() ? "on" : "off");
+    sprintf(buffer, "CPU cache: %s\n", cache_state_text());   /* 2.0.30: read from the CPU */
     print(channel, buffer);
 
     short screen = sys_chan_device(channel);

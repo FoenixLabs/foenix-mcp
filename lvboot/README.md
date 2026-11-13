@@ -1,5 +1,9 @@
 # Gen1 LVGL boot loader (K25 first)
 
+**1.3 (2026-11-13):** an entry whose flash block holds MCP 2.0.30 or later is shown as "MCP 2.0.30 caches ON" / "OFF",
+from the MCP info record at offset `$40` of the block (see the main README, version 2.0.30). The Makefile also builds on
+macOS / Linux now: `VBCC=../vbcc PATH=~/opt/vbcc/bin:$PATH make MACHINE=K25`.
+
 Port of the A2560Me LVGL boot loader (FoenixMCP_Gen2/lvboot) to the Gen1 machines, 2026-11-06. One source tree;
 `make MACHINE=K25` (K40 / K60 / X40 / X60 follow with their FPGA ports: src/hw.h has the per-machine layer).
 

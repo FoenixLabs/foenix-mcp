@@ -157,6 +157,30 @@ static const char * parse_line(const char * line) {
     return "unknown setting";
 }
 
+/*
+ * mcp_label - lvboot 1.3 (2026-11-13): name an entry after the MCP that is in its flash block.
+ *
+ * Input:  e = a used entry
+ * Output: none; e->name becomes for example "MCP 2.0.30 caches ON" when the block holds an MCP info record
+ *
+ * MCP 2.0.30 and later carry an info record in their vector table (vectors 16-19, offset $40 of the block, never
+ * used by the CPU): "MCPI", the version (major << 24 | minor << 16 | build), flags (bit 0 = the CPU caches are on)
+ * and the three XOR-ed as a check. The record replaces the BOOT.CFG name, so the menu always shows which MCP is
+ * really in the flash. Blocks without a valid record (older MCPs, EmuTOS, ...) keep their BOOT.CFG name.
+ */
+#define MCP_INFO_OFFSET 0x40UL
+#define MCP_INFO_MAGIC  0x4D435049UL            /* "MCPI" */
+
+static void mcp_label(boot_entry_t * e) {
+    const volatile uint32_t * r = (const volatile uint32_t *)(e->addr + MCP_INFO_OFFSET);
+    uint32_t magic = r[0], ver = r[1], flags = r[2], check = r[3];
+
+    if (magic != MCP_INFO_MAGIC || (magic ^ ver ^ flags) != check) return;
+    lv_snprintf(e->name, sizeof(e->name), "MCP %d.%d.%d caches %s", (int)(ver >> 24), (int)((ver >> 16) & 0xFF),
+                (int)(ver & 0xFFFF), (flags & 1) ? "ON" : "OFF");
+    dbg_printf("bootcfg: block at $%08lX holds %s\n", (unsigned long)e->addr, e->name);
+}
+
 static void scan_flash(void) {
     int b;
     for (b = 1; b < 8; b++) {
@@ -246,6 +270,12 @@ void cfg_load(void) {
         cfg_default = 0;
         for (k = 1; k <= CFG_MAX_ENTRIES && !cfg_default; k++) if (cfg_entries[k].used) cfg_default = k;
         cfg_timeout = cfg_default ? 5 : 0;
+    }
+    /* lvboot 1.3: entries whose block holds an MCP with an info record show its version and cache setting */
+    {
+        int k;
+        for (k = 1; k <= CFG_MAX_ENTRIES; k++)
+            if (cfg_entries[k].used && !flash_blank(cfg_entries[k].addr)) mcp_label(&cfg_entries[k]);
     }
 }
 

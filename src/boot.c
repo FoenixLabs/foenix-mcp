@@ -369,7 +369,10 @@ short boot_screen(void) {
     print(screen, buffer);
     sprintf(buffer, "      FPGA V: %x.%02x.%04x\n", (unsigned int)info.fpga_model, info.fpga_version, info.fpga_subver);
     print(screen, buffer);
-    sprintf(buffer, "   CPU CACHE: %s\n", cache_is_on() ? "ON" : "OFF");
+    /* 2.0.30: what the CPU's cache register really says, not what the MCP set */
+    strcpy(entry, cache_state_text());
+    str_upcase(entry, entry);
+    sprintf(buffer, "   CPU CACHE: %s\n", entry);
     print(screen, buffer);
 
     /* Wait until the target duration has been reached _or_ the user presses a key */

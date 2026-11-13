@@ -77,6 +77,55 @@ This copy of the MCP is maintained for the A2560K Gen1, tested on the
 A2560K25 ("A2560Kc"). The flash images for the K25 and the K40 are the same
 build: the MCP finds out at start-up which board it runs on.
 
+### Version 2.0.30: the boot menu shows which MCP is in the flash
+
+**In the boot loader's menu** (lvboot 1.3, in flash block 0), an entry that
+holds MCP 2.0.30 or later is now shown as, for example,
+**"MCP 2.0.30 caches ON"** or **"MCP 2.0.30 caches OFF"**, whatever `BOOT.CFG`
+calls it. Other entries (EmuTOS, older MCPs) keep their `BOOT.CFG` name and
+start exactly as before.
+
+How lvboot knows: every MCP image now carries a small **info record** in its
+exception vector table, in slots 16-19 (offset `$40` of the image). The
+68040 and 68060 never use those slots, so they are free for data:
+
+| Offset | Contents |
+|---|---|
+| `$40` | `"MCPI"` (`$4D435049`) |
+| `$44` | version: major (bits 31-24), minor (23-16), build (15-0) |
+| `$48` | flags: bit 0 = this MCP switches the CPU caches on |
+| `$4C` | check: the three longs above XOR-ed |
+
+lvboot only uses a record whose magic and check are both right. The
+Makefile takes the version numbers from `src/version.h`, so the record is
+always up to date.
+
+**The cached MCP is harder to upset:**
+
+* The boot screen and `SYSINFO` now read the CPU's cache register itself
+  (`on`, `off`, `instructions only` or `data only`). In 2.0.29 they showed
+  what the MCP had set, so they could say "on" after a program had switched
+  the caches off.
+* Every time the cached MCP starts a program, it sets its caches up again. A
+  program that changes the cache registers (it can, by getting into
+  supervisor mode) no longer leaves them changed for the programs after it.
+* After `TEST GDMA`, `TEST BLIT` and `TEST DAC` the caches are set up anew,
+  instead of putting back a saved register value.
+
+**lvboot** lives in `lvboot/` (see its own README). Building it on a Mac:
+
+```
+cd lvboot
+VBCC=$PWD/../vbcc PATH=~/opt/vbcc/bin:$PATH make MACHINE=K25
+```
+
+This gives `lvboot_k25.bin` for flash block 0 (`--flash lvboot_k25.bin
+--block 0 --board K25`). Make a full flash backup first: block 0 is the
+first thing the board starts, so a broken loader means no boot until the old
+one is written back through the debug port. A Mac build has the same size
+and works the same as a Windows build, but is not byte for byte the same (the
+LVGL files are found in another order, and vasm writes `jsr` as `bsr.l`).
+
 ### Version 2.0.29: an MCP with the CPU caches on
 
 Every MCP so far runs with the 68040's caches off. From 2.0.29 there is a
@@ -252,7 +301,7 @@ form (for example `jsr` becomes `bsr.l`).
 #### 4. Flash and test
 
 Give the image a name that says what it is, for example
-`foenixmcp_2_0_29_k25_k40_b1.bin`. Then use the Gen1 debug tool on the computer
+`foenixmcp_2_0_30_k25_k40_b1.bin`. Then use the Gen1 debug tool on the computer
 that is connected to the A2560K's debug port. Name the port by its fixed
 name in `/dev/serial/by-id/` (here `usb-Exar_Corp._XR21B1411_...`): the
 `/dev/ttyUSBn` numbers can change after a reboot of that computer. Always
@@ -260,8 +309,8 @@ make a full backup first: with it you can go back to the old flash.
 
 ```
 python3 a2560_gen1_dbg.py --port <port> --backup backups/flash_before.bin
-python3 a2560_gen1_dbg.py --port <port> --flash foenixmcp_2_0_29_k25_k40_b1.bin --block 1 --board K25 --dry-run
-python3 a2560_gen1_dbg.py --port <port> --flash foenixmcp_2_0_29_k25_k40_b1.bin --block 1 --board K25
+python3 a2560_gen1_dbg.py --port <port> --flash foenixmcp_2_0_30_k25_k40_b1.bin --block 1 --board K25 --dry-run
+python3 a2560_gen1_dbg.py --port <port> --flash foenixmcp_2_0_30_k25_k40_b1.bin --block 1 --board K25
 ```
 
 The dry run checks the image and the board and writes nothing. The real

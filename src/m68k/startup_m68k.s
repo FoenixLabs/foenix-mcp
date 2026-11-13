@@ -12,7 +12,7 @@
             xdef _cache_hw_enable
             xdef _cache_flush
             xdef _cache_data_off
-            xdef _cache_restore
+            xdef _cache_get_cacr
 
 ;
 ; Interrupt registers for A2560U and U+
@@ -416,8 +416,8 @@ _restart_cli:
 ;
 _cache_hw_enable:
 _cache_flush:
-_cache_restore:
-            rts
 _cache_data_off:
+            rts
+_cache_get_cacr:
             moveq   #0,d0
             rts

@@ -232,6 +232,16 @@ endif
 # Flags (are automatically used by make) --------------------------------------
 ASFLAGS := $(ASFLAGS) $(DEFINES) $(INCLUDES)
 CFLAGS  := $(CFLAGS) $(DEFINES) $(INCLUDES)
+
+# 2.0.30: the version from version.h, for the MCP info record in the vector table that the boot
+# loader shows (m68040/startup_m68040.s). grep and tr keep only the digits of each #define line.
+# Where they are missing (a plain Windows prompt) the record simply says 0.0.0.
+MCP_VER_MAJOR := $(shell grep "define VER_MAJOR" version.h 2>/dev/null | tr -dc 0-9)
+MCP_VER_MINOR := $(shell grep "define VER_MINOR" version.h 2>/dev/null | tr -dc 0-9)
+MCP_VER_BUILD := $(shell grep "define VER_BUILD" version.h 2>/dev/null | tr -dc 0-9)
+ifneq ("$(MCP_VER_BUILD)","")
+ ASFLAGS := $(ASFLAGS) -DMCP_VER_MAJOR=$(MCP_VER_MAJOR) -DMCP_VER_MINOR=$(MCP_VER_MINOR) -DMCP_VER_BUILD=$(MCP_VER_BUILD)
+endif
 LDFLAGS := $(LDFLAGS) $(LDFLAGS_FOR_UNIT)
 
 # New make file (Calypsi / 1_makefile per folder). This needs adaptation (removal?)

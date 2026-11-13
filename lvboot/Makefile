@@ -5,8 +5,17 @@
 #   make RAM=1 EXTRA=-DPOPUPBENCH   pop-up timing test (results in SRAM at $007F_BD00; delete build/obj/src/menu.o first)
 # Needs vbccm68k, vasmm68k_mot and vlink on the PATH, and VBCC pointing at the FoenixMCP_Gen2 vbcc folder (libvc).
 # VBCC finds "..." includes next to the source file only with backslash paths, hence $(subst /,\,$<).
+# 2026-11-13: SRCARG and PYTHON make the same Makefile work on macOS / Linux too (forward slashes, python3):
+#   cd lvboot && VBCC=../vbcc PATH=~/opt/vbcc/bin:$PATH make MACHINE=K25
 
 VBCC    ?= E:/FoenixMCP_Gen1/vbcc
+ifeq ($(OS),Windows_NT)
+SRCARG   = $(subst /,\,$<)
+PYTHON  ?= python
+else
+SRCARG   = $<
+PYTHON  ?= python3
+endif
 MACHINE ?= K25
 ifeq ($(MACHINE),K25)
 CPU     = 68040
@@ -54,7 +63,7 @@ all: $(OUT)
 
 $(OUT): $(CRT0) $(COBJ) lvboot.ld
 	$(LD) -brawbin1 -x -gc-all -e vectors -Tlvboot.ld -o $@ -M$(basename $@).map $(CRT0) $(COBJ) -L$(VBCC)/targets/m68k-foenix/lib -lvc
-	@python tools/imgsize.py $@
+	@$(PYTHON) tools/imgsize.py $@
 
 $(CRT0): src/crt0.s
 	@mkdir -p $(dir $@)
@@ -63,17 +72,17 @@ $(CRT0): src/crt0.s
 # LVGL and FatFs: their own code, warnings off
 $(OBJ)/lvgl/%.o: lvgl/%.c $(LVHDR)
 	@mkdir -p $(dir $@)
-	@$(CC) $(CFLAGS) -dontwarn=-1 $(subst /,\,$<) -o=$(@:.o=.s)
+	@$(CC) $(CFLAGS) -dontwarn=-1 $(SRCARG) -o=$(@:.o=.s)
 	@$(AS) $(ASFLAGS) -o $@ $(@:.o=.s)
 
 $(OBJ)/fatfs/%.o: fatfs/%.c fatfs/ffconf.h
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -dontwarn=-1 $(subst /,\,$<) -o=$(@:.o=.s)
+	$(CC) $(CFLAGS) -dontwarn=-1 $(SRCARG) -o=$(@:.o=.s)
 	@$(AS) $(ASFLAGS) -o $@ $(@:.o=.s)
 
 $(OBJ)/src/%.o: src/%.c src/*.h $(LVHDR)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(subst /,\,$<) -o=$(@:.o=.s)
+	$(CC) $(CFLAGS) $(SRCARG) -o=$(@:.o=.s)
 	@$(AS) $(ASFLAGS) -o $@ $(@:.o=.s)
 
 clean:
