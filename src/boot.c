@@ -5,6 +5,7 @@
  */
 
 #include "log_level.h"
+#include "cache.h"
 #ifndef DEFAULT_LOG_LEVEL
     #define DEFAULT_LOG_LEVEL LOG_TRACE
 #endif
@@ -163,6 +164,10 @@ bool is_bootable(unsigned char * sector, short device) {
  */
 void boot_sector_run(short device) {
     FUNC_V_2_V boot_sector = 0;
+
+    /* 2.0.29: the sector was read into memory with data writes; empty the instruction cache so the CPU
+       runs what is there now, not old cached code */
+    cache_flush();
 
     switch(device) {
         case BDEV_FDC:
@@ -363,6 +368,8 @@ short boot_screen(void) {
     sprintf(buffer, " CLOCK (KHZ): %lu\n", info.cpu_clock_khz);
     print(screen, buffer);
     sprintf(buffer, "      FPGA V: %x.%02x.%04x\n", (unsigned int)info.fpga_model, info.fpga_version, info.fpga_subver);
+    print(screen, buffer);
+    sprintf(buffer, "   CPU CACHE: %s\n", cache_is_on() ? "ON" : "OFF");
     print(screen, buffer);
 
     /* Wait until the target duration has been reached _or_ the user presses a key */

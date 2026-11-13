@@ -11,6 +11,7 @@
 #include <string.h>
 #include "simpleio.h"
 #include "g1tests.h"
+#include "cache.h"
 
 u32 g1t_r[64];
 u32 g1t_d[128];
@@ -44,7 +45,15 @@ static void g1t_run(int (*fn)(void), u32 mode, long secs)
     for (i = 0; i < 128; i++) g1t_d[i] = 0;
     g1t_r[0] = mode;
     g1t_end = timers_jiffies() + secs * 60;
-    fn();
+
+    /* 2.0.29: these tests let the GDMA, the blitter and the DAC write memory that the CPU then checks.
+       The CPU does not see those writes, so in a CACHE=1 build its data cache could hold old copies.
+       The tests were written for an MCP without caches: run them with the data cache off. */
+    {
+        unsigned long cacr = cache_data_off();
+        fn();
+        cache_restore(cacr);
+    }
 }
 
 /* ---- TEST DAC [0|2|3] [seconds]: 0 = the 19 functional checks, 2 = test tone, 3 = scales + chord (listening) ---- */

@@ -9,6 +9,10 @@
             xdef _int_disable_all
             xdef _call_user
             xdef _restart_cli
+            xdef _cache_hw_enable
+            xdef _cache_flush
+            xdef _cache_data_off
+            xdef _cache_restore
 
 ;
 ; Interrupt registers for A2560U and U+
@@ -405,3 +409,15 @@ _restart_cli:
             lea ___STACK,sp
             jsr _cli_rerepl
             bra _restart_cli
+
+;
+; 2.0.29: cache control (see src/cache.h). The 68000 has no caches: these routines do nothing,
+; they only exist so the common C code links for the 68000 machines too.
+;
+_cache_hw_enable:
+_cache_flush:
+_cache_restore:
+            rts
+_cache_data_off:
+            moveq   #0,d0
+            rts

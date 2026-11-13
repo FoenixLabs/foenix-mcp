@@ -9,6 +9,10 @@
             xdef _int_disable_all
             xdef _call_user
             xdef _restart_cli
+            xdef _cache_hw_enable
+            xdef _cache_flush
+            xdef _cache_data_off
+            xdef _cache_restore
 
 ;
 ; Interrupt registers for A2560X/K and GenX
@@ -453,9 +457,94 @@ _call_user:
             move.w #0,-(a7)             ; Push the fake vector offset
             move.l a0,-(a7)             ; Push it as the starting address
             move.w #$0000,-(a7)         ; Push the user's initial SR (to switch to user mode)
+        ifd CACHE_ON
+            ; 2.0.29: the program was just loaded with data writes. The instruction cache may still hold
+            ; old code from the same addresses (an earlier program), so drop it before jumping in.
+            nop
+            cpusha  bc
+            nop
+        endif
             rte                         ; Start the user process
 
 _restart_cli:
             lea ___STACK,sp
             jsr _cli_rerepl
             bra _restart_cli
+
+;
+; 2.0.29: 68040 / 68060 cache control (see src/cache.h for the C side).
+; Only a build with CACHE=1 (-DCACHE_ON) does anything here; in a normal build every routine just
+; returns, so the MCP behaves exactly as without these routines. All of them use privileged
+; instructions: call them from the kernel (supervisor mode) only.
+;
+; The cache mode of each address comes from the transparent translation registers (the MMU is off):
+;   DTT0 $FC03C040 : $FC00_0000-$FFFF_FFFF data (VGE, register blocks, flash) = non-cacheable,
+;                    serialized. Serialized, so a register read can never pass an earlier register write.
+;   everything else: the 68040 default with the MMU off = cacheable WRITE-THROUGH. Every CPU write goes
+;                    to memory at once, so video, the GDMA, the blitter, the DAC and the debug port always
+;                    see what the CPU wrote. (Copyback would be faster but needs pushes everywhere.)
+;   ITT0 / ITT1 off: instructions from flash and RAM are cached (default mode).
+; This is the example set from the K25 hardware reference, without the optional copyback SDRAM.
+;
+
+;
+; void cache_hw_enable(void) - switch the data and instruction caches on
+;
+_cache_hw_enable:
+        ifd CACHE_ON
+            moveq   #0,d0
+            movec   d0,itt0             ; instructions: default (cacheable) everywhere
+            movec   d0,itt1
+            movec   d0,dtt1
+            move.l  #$FC03C040,d0       ; data $FC00_0000-$FFFF_FFFF: non-cacheable, serialized
+            movec   d0,dtt0
+            nop
+            cinva   bc                  ; throw away whatever the caches hold from before the reset
+            move.l  #$80008000,d0       ; DE (bit 31) + IE (bit 15): same bits on the 68040 and the 68060
+            movec   d0,cacr
+            nop
+        endif
+            rts
+
+;
+; void cache_flush(void) - write any changed data to memory and empty both caches
+; Use it before running code that was loaded or changed with data writes.
+;
+_cache_flush:
+        ifd CACHE_ON
+            nop
+            cpusha  bc
+            nop
+        endif
+            rts
+
+;
+; unsigned long cache_data_off(void) - switch only the data cache off, return the old CACR
+; For code that lets the GDMA or the blitter write memory the CPU then reads (the TEST commands):
+; the 68040 does not snoop, so with the data cache on it could read old copies.
+;
+_cache_data_off:
+            moveq   #0,d0
+        ifd CACHE_ON
+            movec   cacr,d0             ; d0 = the value to give back to cache_restore
+            move.l  d0,d1
+            and.l   #$7FFFFFFF,d1       ; DE off, instruction cache unchanged
+            nop
+            cpusha  dc                  ; changed data to memory first (write-through: normally nothing)
+            movec   d1,cacr
+            nop
+        endif
+            rts
+
+;
+; void cache_restore(unsigned long cacr) - put back the CACR value from cache_data_off
+;
+_cache_restore:
+        ifd CACHE_ON
+            move.l  (4,a7),d0
+            nop
+            cinva   dc                  ; memory may have changed while the data cache was off
+            movec   d0,cacr
+            nop
+        endif
+            rts

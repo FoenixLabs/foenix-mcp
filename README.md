@@ -77,6 +77,54 @@ This copy of the MCP is maintained for the A2560K Gen1, tested on the
 A2560K25 ("A2560Kc"). The flash images for the K25 and the K40 are the same
 build: the MCP finds out at start-up which board it runs on.
 
+### Version 2.0.29: an MCP with the CPU caches on
+
+Every MCP so far runs with the 68040's caches off. From 2.0.29 there is a
+second kind of image, built with `CACHE=1`, that switches the data and
+instruction caches on. Each release has both: `..._cache.bin` has the caches
+on, the image without `_cache` is the same MCP with the caches off.
+
+**How much faster?** Measured on an A2560K25:
+
+| Test | Caches off | Caches on |
+|---|---|---|
+| FELINC TCP fetch of 1 MB (`felinc_test`, key `b`) | 230 KB/s | 440 KB/s |
+| `tests/cachebench`, CPU (50 sieve runs) | | 3000 ms |
+
+Code and data in RAM gain the most. Screen output gains little: the text
+screen is a register block, and register blocks are never cached.
+
+**What the cached MCP does:**
+
+* **When:** the caches go on at the end of the start-up, after all hardware
+  has been set up and just before the boot screen. The start-up code has
+  delay loops that count CPU cycles (LPC reset, SuperIO, PS/2); with the
+  instruction cache on they would run too fast. Everything after that waits
+  with the timers or with register reads, which take the same time with or
+  without cache.
+* **Cache modes** (the example set from the K25 hardware reference):
+  `$FC00_0000-$FFFF_FFFF` (VGE, register blocks, flash data) is
+  non-cacheable and serialized; all RAM is cached *write-through*. So every
+  CPU write still reaches memory at once, and video, the GDMA, the blitter,
+  the DAC and the debug port always see what the CPU wrote. Instructions
+  are cached everywhere.
+* **Starting code:** a program, a boot sector or `CALL <address>` is loaded
+  with data writes, which the instruction cache does not see. The MCP empties
+  both caches before it jumps into such code.
+* **DMA tests:** `TEST GDMA`, `TEST BLIT` and `TEST DAC` let the hardware
+  write memory the CPU then checks. The CPU does not see those writes, so
+  these tests run with the data cache off.
+* **Showing it:** the boot screen shows `CPU CACHE: ON` or `OFF`, and
+  `SYSINFO` shows `CPU cache: on` or `off`.
+
+**For your own programs:** with the caches on, a program that lets the GDMA
+or the blitter write memory and then reads it, may read old cached copies.
+Such programs must handle the cache themselves (in supervisor mode), or use
+the image with the caches off.
+
+The code: `src/cache.h` / `src/cache.c` (C side), the cache routines at the
+end of `src/m68040/startup_m68040.s`, and the switch in `src/Makefile`.
+
 ### Version 2.0.28: no more lines lost at the bottom of the screen
 
 **What you saw (2.0.27 and older):** print more lines than fit on the
@@ -170,9 +218,26 @@ the MCP in block 1, EmuTOS in block 2). `BLOCK=1` selects
 `vbcc/config/a2560k_flash_b1_linux`, which also works on macOS.
 
 **Run `make UNIT=a2560k BLOCK=1 clean` first whenever you change a header
-file** (`.h`), and when you switch between `BLOCK` values. The Makefile does
-not know which `.c` files use which headers, so without a clean build old
-object files stay in use. `src/version.h` is a header too.
+file** (`.h`), and when you switch between `BLOCK`, `CPU060` or `CACHE`
+values. The Makefile does not know which `.c` files use which headers, so
+without a clean build old object files stay in use. `src/version.h` is a
+header too.
+
+Make settings for the other images:
+
+| Image | Settings |
+|---|---|
+| A2560K K25 / K40 | `UNIT=a2560k BLOCK=1` |
+| A2560K K60 (68LC060) | `UNIT=a2560k BLOCK=1 CPU060=1` |
+| A2560X | `UNIT=a2560x` |
+| GenX | `UNIT=genx` |
+| any of these with the CPU caches on | add `CACHE=1` |
+
+**All images at once:** `tools/build_release.sh` builds every machine twice
+(caches off and on), each from clean, into `release/<version>/`, with a
+`SHA256SUMS.txt` and a build log per image. It finds the VBCC programs on the
+PATH or in `~/opt/vbcc/bin`. The A2560U is not in the list: its 68000 version
+does not build from this source tree yet.
 
 A Mac build works the same as a Windows build, but the two images are not
 byte for byte the same: the newer vasm writes some instructions in a shorter
@@ -181,14 +246,16 @@ form (for example `jsr` becomes `bsr.l`).
 #### 4. Flash and test
 
 Give the image a name that says what it is, for example
-`foenixmcp_2_0_28_k25_b1.bin`. Then use the Gen1 debug tool on the computer
-that is connected to the A2560K's debug port (`/dev/ttyUSB1` here). Always
+`foenixmcp_2_0_29_k25_k40_b1.bin`. Then use the Gen1 debug tool on the computer
+that is connected to the A2560K's debug port. Name the port by its fixed
+name in `/dev/serial/by-id/` (here `usb-Exar_Corp._XR21B1411_...`): the
+`/dev/ttyUSBn` numbers can change after a reboot of that computer. Always
 make a full backup first: with it you can go back to the old flash.
 
 ```
-python3 a2560_gen1_dbg.py --port /dev/ttyUSB1 --backup backups/flash_before.bin
-python3 a2560_gen1_dbg.py --port /dev/ttyUSB1 --flash foenixmcp_2_0_28_k25_b1.bin --block 1 --board K25 --dry-run
-python3 a2560_gen1_dbg.py --port /dev/ttyUSB1 --flash foenixmcp_2_0_28_k25_b1.bin --block 1 --board K25
+python3 a2560_gen1_dbg.py --port <port> --backup backups/flash_before.bin
+python3 a2560_gen1_dbg.py --port <port> --flash foenixmcp_2_0_29_k25_k40_b1.bin --block 1 --board K25 --dry-run
+python3 a2560_gen1_dbg.py --port <port> --flash foenixmcp_2_0_29_k25_k40_b1.bin --block 1 --board K25
 ```
 
 The dry run checks the image and the board and writes nothing. The real

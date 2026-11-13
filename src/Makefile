@@ -138,6 +138,15 @@ else
  DEFINES := $(DEFINES) -DLOG_CHANNEL=$(LOG_CHANNEL)
 endif
 
+# CPU caches (2.0.29) ---------------------------------------------------------
+# CACHE=1 builds an MCP that switches the 68040 / 68060 data and instruction
+# caches on once the hardware is set up (see src/cache.h). Without it (or with
+# CACHE=0) the caches stay off, as in every MCP before 2.0.29.
+# Switching CACHE needs a clean build: make ... clean first.
+ifeq ("$(CACHE)","1")
+ DEFINES := $(DEFINES) -DCACHE_ON
+endif
+
 INCLUDES = -I. -I$(CURDIR)/include -I$(CURDIR)
 ifeq ($(OS),Windows_NT)
  INCLUDES := $(subst /,$(SEP),$(INCLUDES))

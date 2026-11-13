@@ -3,6 +3,7 @@
  */
 
 #include "log.h"
+#include "cache.h"
 #include "cli.h"
 #include "simpleio.h"
 #include "sys_general.h"
@@ -57,6 +58,8 @@ short mem_cmd_call(short channel, int argc, const char * argv[]) {
 
     thunk = (p_thunk)cli_eval_number(argv[1]);
     if (thunk) {
+        /* 2.0.29: the code may have been put there with data writes; make sure the CPU runs that code */
+        cache_flush();
         thunk();
     }
 

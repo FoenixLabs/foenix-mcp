@@ -61,6 +61,7 @@
 #include "vicky_general.h"
 #include "fatfs/ff.h"
 #include "cli/cli.h"
+#include "cache.h"
 #include "rsrc/font/MSX_CP437_8x8.h"
 //#include "rsrc/bitmaps/image.h"
 
@@ -94,6 +95,11 @@ int main(int argc, char * argv[]) {
     } else {
         INFO("CLI initialized.");
     }
+
+    /* 2.0.29: in a CACHE=1 build, switch the CPU caches on now. Not earlier: the hardware set-up above
+       has delay loops that count CPU cycles (LPC reset, SuperIO, PS/2), which would run too fast with
+       the instruction cache on. Everything from here on waits with the timers or register reads. */
+    cache_enable();
 	
 #if MODEL == MODEL_FOENIX_A2560U || MODEL == MODEL_FOENIX_A2560U_PLUS || MODEL == MODEL_FOENIX_A2560X || MODEL == MODEL_FOENIX_A2560K
     // Make sure the command path is set to the default before we get started

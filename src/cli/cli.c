@@ -37,6 +37,7 @@
 #include "variables.h"
 #include "vicky_general.h"
 #include "version.h"
+#include "cache.h"
 
 #define MAX_HISTORY_DEPTH   5   /* Maximum number of commands we'll record */
 #define MAX_COMMAND_SIZE    128 /* Maximum number of characters in a command line */
@@ -477,6 +478,9 @@ short cmd_sysinfo(short channel, int argc, const char * argv[]) {
     print(channel, buffer);
 
     sprintf(buffer, "MCP version: v%02u.%02u.%04u\n", cli_sys_info.mcp_version, cli_sys_info.mcp_rev, cli_sys_info.mcp_build);
+    print(channel, buffer);
+
+    sprintf(buffer, "CPU cache: %s\n", cache_is_on() ? "on" : "off");
     print(channel, buffer);
 
     short screen = sys_chan_device(channel);

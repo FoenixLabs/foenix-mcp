@@ -102,3 +102,5 @@ lvboot/build/
 *.s37
 # Generated from splash_*.bmp by rsrc/bitmaps/bmp2c.py during the build
 src/rsrc/bitmaps/splash_*.c
+# Output of tools/build_release.sh
+release/
