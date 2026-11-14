@@ -338,6 +338,20 @@ kernel currently uses the FatFS embedded file system, which is covered under
 separate license. Please see the [src/fatfs](src/fatfs) directory for license
 details.
 
+### Attribution
+
+This project is based on the original [FoenixMCP](https://github.com/pweingar/FoenixMCP)
+project. Special thanks to [pweingar](https://github.com/pweingar) for creating
+FoenixMCP and laying the foundation for this work.
+
+Thank you to all contributors to the original project, as listed in its
+[contributor history](https://github.com/pweingar/FoenixMCP/graphs/contributors):
+
+* [pweingar](https://github.com/pweingar)
+* [vinz6751](https://github.com/vinz6751)
+* [daschewie](https://github.com/daschewie)
+* [hth313](https://github.com/hth313)
+
 ## Features
 
 See the [features list](FEATURES.md) for the features intended for this kernel
