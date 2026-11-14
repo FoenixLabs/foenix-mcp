@@ -814,6 +814,8 @@ short cli_readline(short channel, char * command_line) {
     char buffer[10];
     unsigned short key_code = 0;
     short i = 0, j = 0;
+    /* 2.0.31: how many commands back in the history we are. 0 = the new (empty) line;
+       n > 0 = cli_history[n - 1] is on the screen (cli_history[0] is the newest command). */
     short history = 0;
 
     // Make sure key echo is turned off
@@ -898,9 +900,10 @@ short cli_readline(short channel, char * command_line) {
                     break;
 
                 case CLI_KEY_UP:
-                    // Go back one command in history
+                    // Go back one command in history (the next older one)
                     if ((history < MAX_HISTORY_DEPTH) && (cli_history[history][0] != 0)) {
-                        strcpy(command_line, cli_history[history++]);
+                        strcpy(command_line, cli_history[history]);
+                        history++;
                         i = strlen(command_line);
                         print(channel, "\x1b[3G\x1b[K");
                         print(channel, command_line);
@@ -908,12 +911,25 @@ short cli_readline(short channel, char * command_line) {
                     break;
 
                 case CLI_KEY_DOWN:
-                    // Go forward one command in history
-                    if (history > 0) {
-                        strcpy(command_line, cli_history[--history]);
+                    // Go forward one command in history (the next newer one)
+                    // 2.0.31: this showed the command that was already on the screen (the counter went
+                    // down first, then the same entry was shown again), so Down was one press late and
+                    // never got back to an empty line.
+                    if (history > 1) {
+                        history--;
+                        strcpy(command_line, cli_history[history - 1]);
                         i = strlen(command_line);
                         print(channel, "\x1b[3G\x1b[K");
                         print(channel, command_line);
+
+                    } else if (history == 1) {
+                        // Past the newest command: back to an empty line, as before the first Up
+                        history = 0;
+                        for (i = 0; i < MAX_COMMAND_SIZE; i++) {
+                            command_line[i] = 0;
+                        }
+                        i = 0;
+                        print(channel, "\x1b[3G\x1b[K");
                     }
                     break;
 
@@ -1151,11 +1167,16 @@ short cli_repl(short channel) {
 
             default:
                 // Otherwise, good command... lets add it to the history
-                for (i = MAX_HISTORY_DEPTH - 1; i > 0; i--) {
-                    // Copy previous commands down
-                    strcpy(cli_history[i], cli_history[i-1]);
+                // 2.0.31: but not an empty line (it pushed a real command out, and Up stops at an
+                // empty entry, so after just pressing Enter the history seemed gone), and not the
+                // same command as the one just before it.
+                if ((command_line[0] != 0) && (strcmp(command_line, cli_history[0]) != 0)) {
+                    for (i = MAX_HISTORY_DEPTH - 1; i > 0; i--) {
+                        // Copy previous commands down
+                        strcpy(cli_history[i], cli_history[i-1]);
+                    }
+                    strcpy(cli_history[0], command_line);
                 }
-                strcpy(cli_history[0], command_line);
                 break;
         }
 
