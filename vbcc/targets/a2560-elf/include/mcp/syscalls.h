@@ -628,7 +628,11 @@ extern long sys_time_jiffies();
  *
  * Inputs:
  * time = pointer to a t_time record containing the correct time
+ *
+ * sys_time_setrtc is the name to use (as in the Calypsi SDK);
+ * sys_rtc_set_time is the older MCP name for the same call.
  */
+extern void sys_time_setrtc(p_time time);
 extern void sys_rtc_set_time(p_time time);
 
 /*
@@ -636,7 +640,11 @@ extern void sys_rtc_set_time(p_time time);
  *
  * Inputs:
  * time = pointer to a t_time record in which to put the current time
+ *
+ * sys_time_getrtc is the name to use (as in the Calypsi SDK);
+ * sys_rtc_get_time is the older MCP name for the same call.
  */
+extern void sys_time_getrtc(p_time time);
 extern void sys_rtc_get_time(p_time time);
 
 /*

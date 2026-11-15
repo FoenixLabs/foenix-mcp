@@ -133,6 +133,14 @@ returned 0, so every load error ("bad binary file", "out of memory", a read
 error) showed up as "file is not executable". It now passes the error on. The
 PGZ loader also never freed its read buffer; it does now.
 
+**RTC call names.** The Calypsi SDK calls the RTC functions `sys_time_getrtc`
+and `sys_time_setrtc`, the MCP's own syscall library `sys_rtc_get_time` and
+`sys_rtc_set_time`. Both are the same kernel calls (`KFN_TIME_GETRTC` $52,
+`KFN_TIME_SETRTC` $51). `src/syscalls.c` and both `syscalls.h` files now have
+both names; `sys_time_getrtc` / `sys_time_setrtc` are the ones to use (they
+match the Calypsi SDK and `sys_time_jiffies`), the old names stay so existing
+programs still build.
+
 **RTC test programs** in `tests/` (Calypsi, `make` in each folder):
 `rtctest` measures the RTC speed against the video frame clock, `rtcclock`
 shows the RTC with its own interrupt handler and counters, and `rtctsr`
