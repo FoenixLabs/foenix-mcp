@@ -152,7 +152,7 @@ const t_cli_command g_cli_commands[] = {
     { "PWD", "PWD : prints the current directory", cmd_pwd },
     { "REN", "REN <old path> <new path> : rename a file or directory", cmd_rename },
     { "SAVE", "SAVE <path> <address> <length> : write memory to a file (e.g. data the debug port put in SDRAM)", cmd_save },
-    { "SET", "SET <name> <value> : set the value of a setting (SET HELP lists them)\nSET CLOCK ON|OFF|12|24 : show the time in the title bar (24 or 12 hours)", cli_cmd_set },
+    { "SET", "SET <name> <value> : set the value of a setting (SET HELP lists them)", cli_cmd_set },
     { "GET", "GET <name> : get the value of a setting", cli_cmd_get },
     { "SHOWINT", "SHOWINT : Show information about the interrupt registers", cmd_showint },
     { "SYSINFO", "SYSINFO : prints information about the system", cmd_sysinfo },

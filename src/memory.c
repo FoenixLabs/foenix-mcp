@@ -10,6 +10,11 @@
  * NOTE: this code does not manage video RAM or DRAM (on the A2560K)... only
  * system RAM, where code may be executed.
  *
+ * A2560K, A2560X and GenX: programs may use $0001_0000 up to the top of RAM;
+ * below $0001_0000 are the vectors, the MCP's variables and the program's
+ * stack. The program loaders (dev/fsys.c, fsys_check_load) refuse files that
+ * would load outside that range in system RAM.
+ *
  */
 
 #include <stdint.h>
