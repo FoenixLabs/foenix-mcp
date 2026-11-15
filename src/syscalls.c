@@ -662,9 +662,17 @@ long sys_time_jiffies() {
  *
  * Inputs:
  * time = pointer to a t_time record containing the correct time
+ *
+ * sys_time_setrtc is the name to use: it is the name in the Calypsi SDK and
+ * follows the kernel call (KFN_TIME_SETRTC, next to sys_time_jiffies).
+ * sys_rtc_set_time is the older MCP name, kept so existing programs still build.
  */
-void sys_rtc_set_time(p_time time) {
+void sys_time_setrtc(p_time time) {
     syscall(KFN_TIME_SETRTC, time);
+}
+
+void sys_rtc_set_time(p_time time) {
+    sys_time_setrtc(time);
 }
 
 /*
@@ -672,9 +680,16 @@ void sys_rtc_set_time(p_time time) {
  *
  * Inputs:
  * time = pointer to a t_time record in which to put the current time
+ *
+ * sys_time_getrtc is the name to use (Calypsi SDK, KFN_TIME_GETRTC);
+ * sys_rtc_get_time is the older MCP name, kept so existing programs still build.
  */
-void sys_rtc_get_time(p_time time) {
+void sys_time_getrtc(p_time time) {
     syscall(KFN_TIME_GETRTC, time);
+}
+
+void sys_rtc_get_time(p_time time) {
+    sys_time_getrtc(time);
 }
 
 /*
