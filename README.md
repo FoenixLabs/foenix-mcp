@@ -92,12 +92,14 @@ interrupt that happened to be pending at the same moment. `int_clear` now
 writes only its own bit.
 
 **Clock in the title bar.** `SET CLOCK ON` shows the time (`hh:mm:ss`) at the
-right-hand end of the MCP title bar, `SET CLOCK OFF` removes it. It is off
+right-hand end of the MCP title bar, `SET CLOCK OFF` removes it.
+`SET CLOCK 24` shows it as `16:30:05` (the default), `SET CLOCK 12` as
+`04:30:05 PM`; both also switch the clock on. Only the display changes: the
+RTC itself and `GET TIME` stay as they are. It is off
 after a start; put `SET CLOCK ON` in `/sd/system/mcp.init` to have it on every
 time. The RTC interrupt (64 times a second) draws it once a second, straight
 into the text memory of row 0, so it takes the colours of the bar and also
-keeps running while programs run. `GET CLOCK` also shows how many RTC
-interrupts the MCP has handled, which tells whether the RTC interrupt runs.
+keeps running while programs run.
 
 **24-hour mode kept.** `rtc_init` wrote the RTC control register with only the
 STOP bit at every start, which switched the clock to 12-hour mode: after

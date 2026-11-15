@@ -73,17 +73,12 @@ extern short rtc_register_periodic(short rate, FUNC_V_2_V handler);
 extern void rtc_clock_set(short on);
 
 /**
- * Tell whether the title bar clock is on (2.0.32)
+ * Choose 24-hour or 12-hour display for the title bar clock (2.0.32, SET CLOCK 24 / 12)
  *
- * @return 1 if the clock is shown, 0 if not
- */
-extern short rtc_clock_get();
-
-/**
- * Count of RTC interrupts handled since start (2.0.32, shown by GET CLOCK)
+ * Only the display changes; the RTC itself and GET TIME stay as they are.
  *
- * @return the number of RTC periodic interrupts the MCP's handler has seen
+ * @param hours24 1 = show 00:00:00 - 23:59:59, 0 = show 12:00:00 AM - 11:59:59 PM
  */
-extern unsigned long rtc_get_ticks();
+extern void rtc_clock_set_24h(short hours24);
 
 #endif

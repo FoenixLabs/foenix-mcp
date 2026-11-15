@@ -17,13 +17,15 @@
 #define RTC_CLOCK_TEXT      VKY3_B_TEXT_MATRIX
 #define RTC_CLOCK_SCREEN    0
 #endif
-#define RTC_CLOCK_LEN       9           /* " hh:mm:ss" */
+#define RTC_CLOCK_LEN_24    9           /* " hh:mm:ss" */
+#define RTC_CLOCK_LEN_12    12          /* " hh:mm:ss AM" (also the area cleared when switching) */
 
 static unsigned long rtc_ticks;
 
 static short rtc_clock_on = 0;              /* 2.0.32: 1 = show the time in the title bar (SET CLOCK ON) */
-static unsigned char rtc_clock_sec = 0xFF;  /* the seconds shown last (0xFF = nothing shown yet) */
-static short rtc_clock_column = 0;          /* first column of the clock text in row 0 */
+static short rtc_clock_24h = 1;             /* 1 = 24-hour display, 0 = 12-hour with AM / PM (SET CLOCK 24 / 12) */
+static unsigned char rtc_clock_sec = 0xFF;  /* the seconds shown last (0xFF = draw at the next interrupt) */
+static short rtc_clock_width = 0;           /* visible width of row 0; the clock ends at its last column */
 
 void rtc_handle_int();                      /* below; rtc_clock_set puts it back on the RTC interrupt */
 
@@ -34,10 +36,15 @@ void rtc_handle_int();                      /* below; rtc_clock_set puts it back
  * it writes the characters straight into the text memory of row 0 and leaves the colours alone, so
  * the time takes the colours of the bar. When the command line redraws its bar, the time comes back
  * at the next second. It only reads the RTC, it never writes to it.
+ *
+ * The hour register holds BCD 0-23 when the RTC is in 24-hour mode, and BCD 1-12 with bit 7 = PM in
+ * its 12-hour mode. Both are turned into 0-23 first, then shown the way SET CLOCK 24 / 12 asked for.
  */
 static void rtc_clock_draw() {
 #ifdef RTC_CLOCK_TEXT
-    unsigned char sec, min, hour;
+    unsigned char sec, min, hour_reg;
+    short hour;                         /* 0-23 */
+    short shown;                        /* the hour as shown: 0-23, or 1-12 */
     volatile unsigned char * p;
 
     sec = *RTC_SEC;
@@ -46,18 +53,57 @@ static void rtc_clock_draw() {
     }
     rtc_clock_sec = sec;
     min = *RTC_MIN;
-    hour = *RTC_HOUR & 0x7f;            /* without the PM bit of 12-hour mode */
+    hour_reg = *RTC_HOUR;
 
-    p = RTC_CLOCK_TEXT + rtc_clock_column;
+    if (*RTC_CTRL & RTC_2412) {
+        hour = bcd_to_i(hour_reg & 0x3f);
+    } else {
+        hour = bcd_to_i(hour_reg & 0x1f) % 12;      /* 12 AM = 0, 12 PM = 12 below */
+        if (hour_reg & 0x80) {
+            hour += 12;
+        }
+    }
+
+    if (rtc_clock_24h) {
+        shown = hour;
+        p = RTC_CLOCK_TEXT + rtc_clock_width - RTC_CLOCK_LEN_24;
+    } else {
+        shown = hour % 12;
+        if (shown == 0) {
+            shown = 12;
+        }
+        p = RTC_CLOCK_TEXT + rtc_clock_width - RTC_CLOCK_LEN_12;
+    }
+
     *p++ = ' ';
-    *p++ = '0' + (hour >> 4);
-    *p++ = '0' + (hour & 0x0f);
+    *p++ = '0' + shown / 10;
+    *p++ = '0' + shown % 10;
     *p++ = ':';
     *p++ = '0' + (min >> 4);
     *p++ = '0' + (min & 0x0f);
     *p++ = ':';
     *p++ = '0' + (sec >> 4);
-    *p   = '0' + (sec & 0x0f);
+    *p++ = '0' + (sec & 0x0f);
+    if (!rtc_clock_24h) {
+        *p++ = ' ';
+        *p++ = (hour >= 12) ? 'P' : 'A';
+        *p   = 'M';
+    }
+#endif
+}
+
+/*
+ * Clear the clock area at the right-hand end of the title bar
+ */
+static void rtc_clock_clear() {
+#ifdef RTC_CLOCK_TEXT
+    short i;
+
+    if (rtc_clock_width >= RTC_CLOCK_LEN_12) {
+        for (i = rtc_clock_width - RTC_CLOCK_LEN_12; i < rtc_clock_width; i++) {
+            RTC_CLOCK_TEXT[i] = ' ';
+        }
+    }
 #endif
 }
 
@@ -69,12 +115,11 @@ static void rtc_clock_draw() {
 void rtc_clock_set(short on) {
 #ifdef RTC_CLOCK_TEXT
     t_extent text_size;
-    short i;
 
     if (on) {
         /* The clock ends at the last visible column; the screen width can differ per mode */
         txt_get_sizes(RTC_CLOCK_SCREEN, &text_size, 0);
-        rtc_clock_column = text_size.width - RTC_CLOCK_LEN;
+        rtc_clock_width = text_size.width;
         rtc_clock_sec = 0xFF;           /* draw at the next interrupt */
         rtc_clock_on = 1;
 
@@ -88,29 +133,22 @@ void rtc_clock_set(short on) {
 
     } else {
         rtc_clock_on = 0;
-        for (i = 0; i < RTC_CLOCK_LEN; i++) {
-            RTC_CLOCK_TEXT[rtc_clock_column + i] = ' ';
-        }
+        rtc_clock_clear();
     }
 #endif
 }
 
 /**
- * Count of RTC interrupts handled since start (2.0.32, shown by GET CLOCK)
+ * Choose 24-hour or 12-hour display for the title bar clock (2.0.32, SET CLOCK 24 / 12)
  *
- * @return the number of RTC periodic interrupts the MCP's handler has seen
- */
-unsigned long rtc_get_ticks() {
-    return rtc_ticks;
-}
-
-/**
- * Tell whether the title bar clock is on (2.0.32)
+ * Only the display changes; the RTC itself and GET TIME stay as they are.
  *
- * @return 1 if the clock is shown, 0 if not
+ * @param hours24 1 = show 00:00:00 - 23:59:59, 0 = show 12:00:00 AM - 11:59:59 PM
  */
-short rtc_clock_get() {
-    return rtc_clock_on;
+void rtc_clock_set_24h(short hours24) {
+    rtc_clock_24h = hours24 ? 1 : 0;
+    rtc_clock_clear();                  /* the two formats have a different width */
+    rtc_clock_sec = 0xFF;               /* redraw at the next interrupt */
 }
 
 /*
