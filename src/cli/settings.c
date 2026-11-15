@@ -176,6 +176,10 @@ short cli_get_value(short channel, const char * name, char * buffer, short size)
             return ERR_NOT_FOUND;
         }
 
+    } else if (setting->getter == 0) {
+        /* 2.0.32: a setting that can only be set (CLOCK) */
+        return ERR_NOT_SUPPORTED;
+
     } else {
         /* Attempt to set the value, and return the results */
         return setting->getter(channel, buffer, size);
@@ -321,6 +325,36 @@ short atoi_n(char * text, short n) {
     }
 
     return result;
+}
+
+/*
+ * CLOCK setter (2.0.32):
+ *   SET CLOCK ON / OFF   show / stop the time in the right-hand end of the title bar
+ *   SET CLOCK 24 / 12    show it as 16:30:05 or as 04:30:05 PM (and switch it on)
+ * Upper or lower case, and 1 / 0 for ON / OFF, are accepted too.
+ */
+short cli_clock_set(short channel, const char * value) {
+    const char * usage = "USAGE: SET CLOCK ON|OFF|12|24\n";
+
+    if ((toupper(value[0]) == 'O') && (toupper(value[1]) == 'N') && (value[2] == 0)) {
+        rtc_clock_set(1);
+    } else if ((toupper(value[0]) == 'O') && (toupper(value[1]) == 'F') && (toupper(value[2]) == 'F') && (value[3] == 0)) {
+        rtc_clock_set(0);
+    } else if ((value[0] == '1') && (value[1] == 0)) {
+        rtc_clock_set(1);
+    } else if ((value[0] == '0') && (value[1] == 0)) {
+        rtc_clock_set(0);
+    } else if ((value[0] == '2') && (value[1] == '4') && (value[2] == 0)) {
+        rtc_clock_set_24h(1);
+        rtc_clock_set(1);
+    } else if ((value[0] == '1') && (value[1] == '2') && (value[2] == 0)) {
+        rtc_clock_set_24h(0);
+        rtc_clock_set(1);
+    } else {
+        sys_chan_write(channel, usage, strlen(usage));
+        return ERR_GENERAL;
+    }
+    return 0;
 }
 
 /*
@@ -645,6 +679,7 @@ void cli_set_init() {
 
     sys_get_info(&info);
 
+    cli_set_register("CLOCK", "CLOCK ON|OFF|12|24 -- show the time in the title bar (24 or 12 hours)", cli_clock_set, 0);
     cli_set_register("DATE", "DATE yyyy-mm-dd -- set the date in the realtime clock", cli_date_set, cli_date_get);
 
     if (info.screens == 1) {

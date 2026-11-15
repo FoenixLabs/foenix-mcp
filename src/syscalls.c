@@ -636,7 +636,7 @@ unsigned long sys_mem_get_ramtop() {
  * @return address of the first byte of the reserved block
  */
  unsigned long sys_mem_reserve(unsigned long bytes) {
-     return (short)syscall(KFN_MEM_RESERVE, bytes);
+     return (unsigned long)syscall(KFN_MEM_RESERVE, bytes);   /* an address: was cut to a short */
  }
 
 /*

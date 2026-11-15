@@ -18,9 +18,22 @@
 #include "fsys.h"
 #include "fatfs/ff.h"
 #include "log.h"
+#include "memory.h"
+#include "sys_general.h"
 #include "syscalls.h"
 #include "simpleio.h"
 #include "utilities.h"
+
+#if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X
+/* Memory the loaders must not write to (see fsys_check_load):
+ *   $0000_0000 up to ___USER_STACK ($0001_0000, linker script): the vectors,
+ *   the MCP's variables and the stack the MCP gives a program;
+ *   the top of RAM (mem_get_ramtop) up to the end of system RAM: the MCP's own
+ *   RAM (BSS, heap, supervisor stack) and whatever programs reserved with
+ *   sys_mem_reserve (TSRs). VBCC adds one underscore to C names. */
+extern char __USER_STACK[];
+#define SYSRAM_END      0x00400000UL    /* 4 MB of system RAM (SRAM) */
+#endif
 
 #define MAX_DRIVES      8       /* Maximum number of drives */
 #define MAX_DIRECTORIES 8       /* Maximum number of open directories */
@@ -907,6 +920,40 @@ short fsys_mkfs(short drive, char * label) {
 
 
 /*
+ * fsys_check_load - may a loader write this block of memory?
+ *
+ * Input:  address = the first byte the loader wants to write
+ *         count   = the number of bytes
+ * Output: 0 when the block is free for programs, ERR_PROTECTED_MEMORY when it
+ *         overlaps memory the MCP uses (or runs past the end of the address space)
+ *
+ * The file formats name their own load addresses, and the loaders used to write
+ * there without looking: a program linked for the wrong memory overwrote the
+ * MCP's variables or stack and the machine crashed while loading. Only system
+ * RAM is guarded; other memory (video RAM, DRAM, I/O) stays allowed, since data
+ * files are loaded there on purpose. Models without a known layout allow all.
+ */
+static short fsys_check_load(unsigned long address, unsigned long count) {
+#if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X
+    unsigned long end = address + count;        /* one past the last byte */
+    unsigned long low = (unsigned long)__USER_STACK;
+    unsigned long top = mem_get_ramtop();
+
+    if (count == 0) {
+        return 0;
+    }
+    if (end < address) {
+        return ERR_PROTECTED_MEMORY;            /* wraps around: a broken header */
+    }
+    if (address < low || (end > top && address < SYSRAM_END)) {
+        log_num(LOG_ERROR, "load refused, MCP memory at: ", address);
+        return ERR_PROTECTED_MEMORY;
+    }
+#endif
+    return 0;
+}
+
+/*
  * Default loader to be used if file extension does not match a known file format
  * but a destination address is provided
  *
@@ -931,6 +978,13 @@ short fsys_default_loader(short chan, long destination, long * start) {
     *start = 0;
 
     while (1) {
+        /* Check a whole chunk before reading into it: the file size is not
+         * known here, so a file that ends just below the MCP's memory but
+         * whose last chunk would reach into it is refused too. */
+        short check = fsys_check_load((unsigned long)dest, DEFAULT_CHUNK_SIZE);
+        if (check != 0) {
+            return check;
+        }
         n = sys_chan_read(chan, dest, DEFAULT_CHUNK_SIZE);
         if (n > 0) {
             /* If we transferred some bytes, keep going */
@@ -1041,7 +1095,8 @@ short fsys_pgz_loader(short chan, long destination, long * start) {
 
                         } else {
                             /* Signature byte does not match expectation */
-                            return ERR_BAD_BINARY;
+                            result = ERR_BAD_BINARY;
+                            break;
                         }
 
                     } else {
@@ -1078,15 +1133,21 @@ short fsys_pgz_loader(short chan, long destination, long * start) {
                                     break;
                                 case 2:
                                     count = count | chunk[i] << 16;
-                                    if (!use_32bits && count == 0) {
-                                        *start = address;
+                                    if (!use_32bits) {
+                                        if (count == 0) {
+                                            *start = address;
+                                        }
+                                        result = fsys_check_load(address, count);
                                     }
                                     log_num(LOG_INFO, "PGZ 24-bit count: ", count);
                                     break;
                                 case 3:
                                     count = count | chunk[i] << 24;
-                                    if (use_32bits && count == 0) {
-                                        *start = address;
+                                    if (use_32bits) {
+                                        if (count == 0) {
+                                            *start = address;
+                                        }
+                                        result = fsys_check_load(address, count);
                                     }
                                     log_num(LOG_INFO, "PGZ 32-bit count: ", count);
                                     break;
@@ -1096,6 +1157,10 @@ short fsys_pgz_loader(short chan, long destination, long * start) {
                             if (segment_idx - data_idx < count) {
                                 *dest++ = chunk[i];
                             }
+                        }
+
+                        if (result != 0) {
+                            break;              /* segment refused: write nothing of it */
                         }
 
                         segment_idx++;
@@ -1117,6 +1182,9 @@ short fsys_pgz_loader(short chan, long destination, long * start) {
         }
     }
 
+    if (chunk != 0) {
+        free(chunk);                            /* was never freed: every load lost 1 chunk */
+    }
     return result;
 }
 
@@ -1171,6 +1239,14 @@ short fsys_elf_loader(short chan, long destination, long * start) {
 				DEBUG("[!] Dynamically linked ELFs not supported");
 				return ERR_NOT_EXECUTABLE;
 			case PT_LOAD:
+                {
+                    /* the segment takes memSize bytes (fileSize read, the rest zeroed) */
+                    unsigned long size = progHeader.memSize > progHeader.fileSize ? progHeader.memSize : progHeader.fileSize;
+                    short check = fsys_check_load(progHeader.physAddr, size);
+                    if (check != 0) {
+                        return check;
+                    }
+                }
                 chan_seek(chan, progHeader.offset, 0);
                 uint8_t * write_buffer = (uint8_t *) progHeader.physAddr;
 				numBytes = chan_read(chan, write_buffer, progHeader.fileSize);
@@ -1227,6 +1303,7 @@ short fsys_pgx_loader(short chan, long destination, long * start) {
             n = chan_read(chan, chunk, DEFAULT_CHUNK_SIZE);
             if (n > 0) {
                 short i;
+                short checked = 0;      /* data part of this chunk checked yet? */
 
                 /* Loop through all the bytes of the chunk that we read */
                 for (i = 0; i < n; i++, file_idx++) {
@@ -1247,6 +1324,16 @@ short fsys_pgx_loader(short chan, long destination, long * start) {
                         if (file_idx == 8) {
                             /* For the first data byte, set our destination pointer */
                             dest = (unsigned char *)address;
+                        }
+
+                        /* The file size is not known up front: check the
+                         * rest of this chunk before writing any of it */
+                        if (!checked) {
+                            result = fsys_check_load((unsigned long)dest, n - i);
+                            if (result != 0) {
+                                break;
+                            }
+                            checked = 1;
                         }
 
                         /* Store the data in the destination address */
@@ -1414,8 +1501,9 @@ short fsys_load(const char * path, long destination, long * start) {
     found_extension = get_app_ext(path, extension);
 
     if (found_extension || destination != 0) {
-        // extension provided, pass to loader
-        fsys_load_ext(path, extension, destination, start);
+        // extension provided, pass to loader (and pass its result back: it was
+        // dropped, so every load error showed up as "file is not executable")
+        return fsys_load_ext(path, extension, destination, start);
     } else {
         // extension not provided, search for a matching file.
         strcpy(spath, path);
@@ -1441,7 +1529,7 @@ short fsys_load(const char * path, long destination, long * start) {
 
         if(found_loader) {
             // Found path with valid loader
-            fsys_load_ext(spath, extension, destination, start);
+            return fsys_load_ext(spath, extension, destination, start);
         } else {
             logmsg(LOG_ERROR, "Command not found.");
             return ERR_NOT_FOUND;

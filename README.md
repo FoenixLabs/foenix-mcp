@@ -77,6 +77,70 @@ This copy of the MCP is maintained for the A2560K Gen1, tested on the
 A2560K25 ("A2560Kc"). The flash images for the K25 and the K40 are the same
 build: the MCP finds out at start-up which board it runs on.
 
+### Version 2.0.32: lost interrupts fixed, clock in the title bar, memory guarded
+
+**Lost interrupts.** `int_clear` (`src/interrupt.c`) is meant to acknowledge
+one interrupt, but it cleared every interrupt that was pending in the same
+group: it read the pending register, which is "write 1 to clear", and wrote
+the value back. Group 1 holds the keyboards, the serial ports, the timers and
+the real-time clock, and the keyboard drivers call `int_clear`. At start-up
+this wiped the RTC's first interrupt before its flags were read; the RTC then
+kept its interrupt line active and never interrupted again (an old comment in
+`rtc_init` already mentioned the RTC interrupt "getting acknowledged without
+clearing the flags"). Later, a key could swallow a timer, serial or RTC
+interrupt that happened to be pending at the same moment. `int_clear` now
+writes only its own bit.
+
+**Clock in the title bar.** `SET CLOCK ON` shows the time (`hh:mm:ss`) at the
+right-hand end of the MCP title bar, `SET CLOCK OFF` removes it.
+`SET CLOCK 24` shows it as `16:30:05` (the default), `SET CLOCK 12` as
+`04:30:05 PM`; both also switch the clock on. Only the display changes: the
+RTC itself and `GET TIME` stay as they are. It is off
+after a start; put `SET CLOCK ON` in `/sd/system/mcp.init` to have it on every
+time. The RTC interrupt (64 times a second) draws it once a second, straight
+into the text memory of row 0, so it takes the colours of the bar and also
+keeps running while programs run.
+
+**24-hour mode kept.** `rtc_init` wrote the RTC control register with only the
+STOP bit at every start, which switched the clock to 12-hour mode: after
+`SET TIME 16:30:00` and a restart it said 04:30. It now keeps the 24-hour and
+daylight-saving bits.
+
+**Top of memory.** The MCP set the top of system RAM (`sys_mem_get_ramtop`,
+below which programs may use RAM and from which `sys_mem_reserve` takes
+memory) to a fixed `$00BD0000` on every machine. On the K25 that is video RAM
+B, not system RAM, so reserved memory landed in the screen. On the A2560K,
+A2560X and GenX it now comes from the linker script: `___memory_start`, where
+the MCP's own data, heap and stack begin (`$003A0000` in the flash builds).
+`sys_mem_reserve` in `src/syscalls.c` also returned its address cut to 16 bits.
+The A2560U/U+ keep the old value until their layout is checked.
+
+**Loader checks memory.** The program loaders (PGZ, PGX, ELF and the plain
+`LOAD` to an address) wrote wherever the file said. A file linked for the wrong
+addresses overwrote the MCP's variables or stack and the machine crashed
+halfway through loading. On the A2560K, A2560X and GenX they now refuse, before
+writing anything of that block, to load into `$0000_0000`-`$0000_FFFF` (vectors,
+the MCP's variables, the program's stack) or from the top of memory up to the
+end of system RAM (`$003A0000`-`$003FFFFF`: the MCP's own RAM and any TSRs),
+with the error "memory used by the MCP". Video RAM and other memory stay
+allowed, since data is loaded there on purpose. This only guards loading: a
+program that wants the whole machine (a game, say) loads into free memory and
+may take over the rest once it runs. Calypsi programs for the A2560K load at
+`$200000` and keep their data below `$380000`, so they are not affected.
+
+**Load errors shown.** `fsys_load` dropped the loader's result and always
+returned 0, so every load error ("bad binary file", "out of memory", a read
+error) showed up as "file is not executable". It now passes the error on. The
+PGZ loader also never freed its read buffer; it does now.
+
+**RTC test programs** in `tests/` (Calypsi, `make` in each folder):
+`rtctest` measures the RTC speed against the video frame clock, `rtcclock`
+shows the RTC with its own interrupt handler and counters, and `rtctsr`
+installs a small resident clock in memory reserved with `sys_mem_reserve` (an
+example of a TSR; with `SET CLOCK` it is not needed any more).
+`tests/loadcheck/make_tests.py` writes three PGZ files the loader must refuse
+(at `$8000`, at `$3A0000`, and one that runs 16 bytes past the top of memory).
+
 ### Version 2.0.31: command-line history fixed
 
 Down in the command line history showed the command that was already on the

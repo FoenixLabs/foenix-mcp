@@ -65,4 +65,20 @@ extern long rtc_get_jiffies();
  */
 extern short rtc_register_periodic(short rate, FUNC_V_2_V handler);
 
+/**
+ * Switch the title bar clock on or off (2.0.32, SET CLOCK ON / OFF)
+ *
+ * @param on 1 = show the time in the right-hand end of the title bar, 0 = stop showing it
+ */
+extern void rtc_clock_set(short on);
+
+/**
+ * Choose 24-hour or 12-hour display for the title bar clock (2.0.32, SET CLOCK 24 / 12)
+ *
+ * Only the display changes; the RTC itself and GET TIME stay as they are.
+ *
+ * @param hours24 1 = show 00:00:00 - 23:59:59, 0 = show 12:00:00 AM - 11:59:59 PM
+ */
+extern void rtc_clock_set_24h(short hours24);
+
 #endif

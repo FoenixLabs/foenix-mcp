@@ -143,10 +143,15 @@ void int_clear(unsigned short n) {
 
 	/* Find the mask for the interrupt */
 	unsigned short mask = int_mask(n);
-	unsigned short new_mask = PENDING_GRP0[group] | mask;
 
-	/* Set the bit for the interrupt to mark it as cleared */
-	PENDING_GRP0[group] = new_mask;
+	/*
+	 * 2.0.32: write ONLY this interrupt's bit. PENDING is "write 1 to clear", so the old code
+	 * (PENDING = PENDING | mask) cleared every interrupt that was pending in the group at that
+	 * moment. Group 1 holds the keyboards, the serial ports, the timers and the RTC: a keyboard
+	 * driver clearing its own interrupt also wiped a pending RTC event, the RTC kept its interrupt
+	 * line active (its flags were never read) and never interrupted again. Zero bits change nothing.
+	 */
+	PENDING_GRP0[group] = mask;
 }
 
 /*
