@@ -77,6 +77,15 @@ This copy of the MCP is maintained for the A2560K Gen1, tested on the
 A2560K25 ("A2560Kc"). The flash images for the K25 and the K40 are the same
 build: the MCP finds out at start-up which board it runs on.
 
+### Version 2.0.31: command-line history fixed
+
+Down in the command line history showed the command that was already on the
+screen, so it was always one press late and never got back to an empty line.
+Down now shows the next newer command and ends on an empty line. Empty lines
+and a command identical to the one before it are no longer stored (an empty
+newest entry made Up do nothing). The code is in `cli_readline` and
+`cli_repl` in `src/cli/cli.c`.
+
 ### Version 2.0.30: the boot menu shows which MCP is in the flash
 
 **A "c" after the version number means the CPU caches are on.** A cached
