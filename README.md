@@ -77,7 +77,7 @@ This copy of the MCP is maintained for the A2560K Gen1, tested on the
 A2560K25 ("A2560Kc"). The flash images for the K25 and the K40 are the same
 build: the MCP finds out at start-up which board it runs on.
 
-### Version 2.0.32: lost interrupts fixed, clock in the title bar
+### Version 2.0.32: lost interrupts fixed, clock in the title bar, top of memory
 
 **Lost interrupts.** `int_clear` (`src/interrupt.c`) is meant to acknowledge
 one interrupt, but it cleared every interrupt that was pending in the same
@@ -105,6 +105,16 @@ keeps running while programs run.
 STOP bit at every start, which switched the clock to 12-hour mode: after
 `SET TIME 16:30:00` and a restart it said 04:30. It now keeps the 24-hour and
 daylight-saving bits.
+
+**Top of memory.** The MCP set the top of system RAM (`sys_mem_get_ramtop`,
+below which programs may use RAM and from which `sys_mem_reserve` takes
+memory) to a fixed `$00BD0000` on every machine. On the K25 that is video RAM
+B, not system RAM, so reserved memory landed in the screen. On the A2560K,
+A2560X and GenX it now comes from the linker script: `___memory_start`, where
+the MCP's own data, heap and stack begin (`$003A0000` in the flash builds).
+`sys_mem_reserve` in `src/syscalls.c` also returned its address cut to 16 bits.
+The A2560U/U+ keep the old value until their layout is checked. Note that the
+program loader still does not look at the top of memory.
 
 **RTC test programs** in `tests/` (Calypsi, `make` in each folder):
 `rtctest` measures the RTC speed against the video frame clock, `rtcclock`

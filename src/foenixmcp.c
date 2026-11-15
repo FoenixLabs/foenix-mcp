@@ -37,6 +37,12 @@
 
 #include "syscalls.h"
 #include "timers.h"
+
+#if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X
+/* Start of the MCP's own RAM, from the linker script (vlink_*.cmd: ___memory_start;
+ * VBCC adds one underscore to C names). Used as the top of RAM for programs. */
+extern char __memory_start[];
+#endif
 #include "boot.h"
 #include "dev/bitmap.h"
 #include "memory.h"
@@ -173,10 +179,20 @@ static void hw_initialize(void) {
 	/* Fill out the system information */
 	sys_get_information(&info);
 
-    /* Initialize the memory system.
-     * TODO: The amount of RAM should depend on the machine! E.g; U only has 2MB. */
-    //mem_init(0x3d0000);
-    mem_init(0xbd0000);     // new load - 12MB now
+    /* Initialize the memory system: programs may use system RAM up to the top
+     * of RAM set here, sys_mem_reserve takes memory from just below it.
+     * On the A2560K, A2560X and GenX the MCP's own RAM (BSS, heap and the
+     * supervisor stack) starts at the linker symbol ___memory_start ($003A0000
+     * in the flash builds), so the top of RAM must be there. The old fixed value
+     * $00BD0000 was not in system RAM at all on the K25 (it is video RAM B), so a
+     * program that reserved memory there wrote into the screen.
+     * TODO: the A2560U/U+ still use the old value: their RAM layout differs and
+     * has not been checked on a board. */
+#if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X
+    mem_init((uint32_t)__memory_start);
+#else
+    mem_init(0xbd0000);
+#endif
 
     /* Initialize the indicators */
     ind_init();

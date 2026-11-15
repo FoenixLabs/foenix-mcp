@@ -14,8 +14,9 @@
  * Note: the MCP's program loader does not look at the reserved top of memory,
  * so a program that uses that memory anyway overwrites the handler, and the
  * next RTC interrupt then crashes. Remove the clock before running such a
- * program. On the K25 the MCP 2.0.31 top of memory is $00BD0000, in video
- * RAM B, so the handler ends up there.
+ * program. From MCP 2.0.32 on, the K25 top of memory is $003A0000 (just below
+ * the MCP's own RAM), so the handler lands in system RAM just under it; MCP
+ * 2.0.31 and older put it at $00BD0000, in video RAM B.
  */
 
 #include <stdio.h>
