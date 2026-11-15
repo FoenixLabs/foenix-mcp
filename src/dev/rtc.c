@@ -9,8 +9,109 @@
 #include "rtc_reg.h"
 #include "simpleio.h"
 #include "timers.h"
+#include "dev/txt_screen.h"
+
+#if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X
+#include "A2560K/vky_chan_b.h"
+/* 2.0.32: the title bar clock writes into row 0 of the console screen (screen 0 = VICKY channel B) */
+#define RTC_CLOCK_TEXT      VKY3_B_TEXT_MATRIX
+#define RTC_CLOCK_SCREEN    0
+#endif
+#define RTC_CLOCK_LEN       9           /* " hh:mm:ss" */
 
 static unsigned long rtc_ticks;
+
+static short rtc_clock_on = 0;              /* 2.0.32: 1 = show the time in the title bar (SET CLOCK ON) */
+static unsigned char rtc_clock_sec = 0xFF;  /* the seconds shown last (0xFF = nothing shown yet) */
+static short rtc_clock_column = 0;          /* first column of the clock text in row 0 */
+
+void rtc_handle_int();                      /* below; rtc_clock_set puts it back on the RTC interrupt */
+
+/*
+ * Draw the time in the right-hand end of the title bar, if the seconds changed
+ *
+ * 2.0.32. Called from the RTC interrupt (64 times a second), so it does not use the screen driver:
+ * it writes the characters straight into the text memory of row 0 and leaves the colours alone, so
+ * the time takes the colours of the bar. When the command line redraws its bar, the time comes back
+ * at the next second. It only reads the RTC, it never writes to it.
+ */
+static void rtc_clock_draw() {
+#ifdef RTC_CLOCK_TEXT
+    unsigned char sec, min, hour;
+    volatile unsigned char * p;
+
+    sec = *RTC_SEC;
+    if (sec == rtc_clock_sec) {
+        return;                         /* still the same second: nothing to do */
+    }
+    rtc_clock_sec = sec;
+    min = *RTC_MIN;
+    hour = *RTC_HOUR & 0x7f;            /* without the PM bit of 12-hour mode */
+
+    p = RTC_CLOCK_TEXT + rtc_clock_column;
+    *p++ = ' ';
+    *p++ = '0' + (hour >> 4);
+    *p++ = '0' + (hour & 0x0f);
+    *p++ = ':';
+    *p++ = '0' + (min >> 4);
+    *p++ = '0' + (min & 0x0f);
+    *p++ = ':';
+    *p++ = '0' + (sec >> 4);
+    *p   = '0' + (sec & 0x0f);
+#endif
+}
+
+/**
+ * Switch the title bar clock on or off (2.0.32, SET CLOCK ON / OFF)
+ *
+ * @param on 1 = show the time in the right-hand end of the title bar, 0 = stop showing it
+ */
+void rtc_clock_set(short on) {
+#ifdef RTC_CLOCK_TEXT
+    t_extent text_size;
+    short i;
+
+    if (on) {
+        /* The clock ends at the last visible column; the screen width can differ per mode */
+        txt_get_sizes(RTC_CLOCK_SCREEN, &text_size, 0);
+        rtc_clock_column = text_size.width - RTC_CLOCK_LEN;
+        rtc_clock_sec = 0xFF;           /* draw at the next interrupt */
+        rtc_clock_on = 1;
+
+        /* Make sure the RTC interrupt really runs. GAVIN sees one event per edge of the RTC's
+           interrupt line, and the bq4802 keeps that line active until its flags are read. If an
+           event got lost (cleared before the flags were read), the line stays active and no new
+           interrupt ever comes. Putting our handler back and reading the flags (in
+           rtc_enable_ticks) starts it again. */
+        int_register(INT_RTC, rtc_handle_int);
+        rtc_enable_ticks();
+
+    } else {
+        rtc_clock_on = 0;
+        for (i = 0; i < RTC_CLOCK_LEN; i++) {
+            RTC_CLOCK_TEXT[rtc_clock_column + i] = ' ';
+        }
+    }
+#endif
+}
+
+/**
+ * Count of RTC interrupts handled since start (2.0.32, shown by GET CLOCK)
+ *
+ * @return the number of RTC periodic interrupts the MCP's handler has seen
+ */
+unsigned long rtc_get_ticks() {
+    return rtc_ticks;
+}
+
+/**
+ * Tell whether the title bar clock is on (2.0.32)
+ *
+ * @return 1 if the clock is shown, 0 if not
+ */
+short rtc_clock_get() {
+    return rtc_clock_on;
+}
 
 /*
  * Interrupt handler for the real time clock
@@ -21,6 +122,10 @@ void rtc_handle_int() {
     flags = *RTC_FLAGS; /* Acknowledge the interrupt */
     
     rtc_ticks++;
+
+    if (rtc_clock_on) {
+        rtc_clock_draw();               /* 2.0.32: the title bar clock */
+    }
 }
 
 /*
@@ -30,13 +135,22 @@ void rtc_init() {
     unsigned char flags;
     unsigned char rates;
     unsigned char enables;
+    unsigned char ctrl;
 
     TRACE("rtc_init");
 
     int_disable(INT_RTC);
 
-    /* Make sure the RTC is on */
-    *RTC_CTRL = RTC_STOP;
+    /*
+     * Make sure the RTC is on.
+     * 2.0.32: this wrote RTC_STOP alone, which also switched the clock to 12-hour mode (and DSE off)
+     * at every boot: after SET TIME 16:30:00 and a restart the clock said 04:30 PM. Now only STOP is
+     * set and UTI cleared; the 24/12 and DSE bits stay, and the register is only written if needed.
+     */
+    ctrl = *RTC_CTRL;
+    if ((ctrl & (RTC_STOP | RTC_UTI)) != RTC_STOP) {
+        *RTC_CTRL = (ctrl & (RTC_2412 | RTC_DSE)) | RTC_STOP;
+    }
 
     /*
      * For the moment: Every so often, the RTC interrupt gets acknowledged

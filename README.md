@@ -77,6 +77,39 @@ This copy of the MCP is maintained for the A2560K Gen1, tested on the
 A2560K25 ("A2560Kc"). The flash images for the K25 and the K40 are the same
 build: the MCP finds out at start-up which board it runs on.
 
+### Version 2.0.32: lost interrupts fixed, clock in the title bar
+
+**Lost interrupts.** `int_clear` (`src/interrupt.c`) is meant to acknowledge
+one interrupt, but it cleared every interrupt that was pending in the same
+group: it read the pending register, which is "write 1 to clear", and wrote
+the value back. Group 1 holds the keyboards, the serial ports, the timers and
+the real-time clock, and the keyboard drivers call `int_clear`. At start-up
+this wiped the RTC's first interrupt before its flags were read; the RTC then
+kept its interrupt line active and never interrupted again (an old comment in
+`rtc_init` already mentioned the RTC interrupt "getting acknowledged without
+clearing the flags"). Later, a key could swallow a timer, serial or RTC
+interrupt that happened to be pending at the same moment. `int_clear` now
+writes only its own bit.
+
+**Clock in the title bar.** `SET CLOCK ON` shows the time (`hh:mm:ss`) at the
+right-hand end of the MCP title bar, `SET CLOCK OFF` removes it. It is off
+after a start; put `SET CLOCK ON` in `/sd/system/mcp.init` to have it on every
+time. The RTC interrupt (64 times a second) draws it once a second, straight
+into the text memory of row 0, so it takes the colours of the bar and also
+keeps running while programs run. `GET CLOCK` also shows how many RTC
+interrupts the MCP has handled, which tells whether the RTC interrupt runs.
+
+**24-hour mode kept.** `rtc_init` wrote the RTC control register with only the
+STOP bit at every start, which switched the clock to 12-hour mode: after
+`SET TIME 16:30:00` and a restart it said 04:30. It now keeps the 24-hour and
+daylight-saving bits.
+
+**RTC test programs** in `tests/` (Calypsi, `make` in each folder):
+`rtctest` measures the RTC speed against the video frame clock, `rtcclock`
+shows the RTC with its own interrupt handler and counters, and `rtctsr`
+installs a small resident clock in memory reserved with `sys_mem_reserve` (an
+example of a TSR; with `SET CLOCK` it is not needed any more).
+
 ### Version 2.0.31: command-line history fixed
 
 Down in the command line history showed the command that was already on the

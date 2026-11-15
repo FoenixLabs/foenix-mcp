@@ -324,6 +324,37 @@ short atoi_n(char * text, short n) {
 }
 
 /*
+ * CLOCK setter (2.0.32): SET CLOCK ON shows the time in the right-hand end of the title bar,
+ * SET CLOCK OFF stops it. Upper or lower case, and 1 / 0, are accepted too.
+ */
+short cli_clock_set(short channel, const char * value) {
+    const char * usage = "USAGE: SET CLOCK ON|OFF\n";
+
+    if ((toupper(value[0]) == 'O') && (toupper(value[1]) == 'N') && (value[2] == 0)) {
+        rtc_clock_set(1);
+    } else if ((toupper(value[0]) == 'O') && (toupper(value[1]) == 'F') && (toupper(value[2]) == 'F') && (value[3] == 0)) {
+        rtc_clock_set(0);
+    } else if ((value[0] == '1') && (value[1] == 0)) {
+        rtc_clock_set(1);
+    } else if ((value[0] == '0') && (value[1] == 0)) {
+        rtc_clock_set(0);
+    } else {
+        sys_chan_write(channel, usage, strlen(usage));
+        return ERR_GENERAL;
+    }
+    return 0;
+}
+
+/*
+ * CLOCK getter (2.0.32)
+ */
+short cli_clock_get(short channel, char * value, short size) {
+    /* The interrupt count shows whether the RTC interrupt runs at all (64 a second when it does) */
+    sprintf(value, "%s (RTC interrupts: %lu)\n", rtc_clock_get() ? "ON" : "OFF", rtc_get_ticks());
+    return 0;
+}
+
+/*
  * DATE setter
  */
 short cli_date_set(short channel, const char * date) {
@@ -645,6 +676,7 @@ void cli_set_init() {
 
     sys_get_info(&info);
 
+    cli_set_register("CLOCK", "CLOCK ON|OFF -- show the time in the title bar", cli_clock_set, cli_clock_get);
     cli_set_register("DATE", "DATE yyyy-mm-dd -- set the date in the realtime clock", cli_date_set, cli_date_get);
 
     if (info.screens == 1) {

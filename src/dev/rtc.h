@@ -65,4 +65,25 @@ extern long rtc_get_jiffies();
  */
 extern short rtc_register_periodic(short rate, FUNC_V_2_V handler);
 
+/**
+ * Switch the title bar clock on or off (2.0.32, SET CLOCK ON / OFF)
+ *
+ * @param on 1 = show the time in the right-hand end of the title bar, 0 = stop showing it
+ */
+extern void rtc_clock_set(short on);
+
+/**
+ * Tell whether the title bar clock is on (2.0.32)
+ *
+ * @return 1 if the clock is shown, 0 if not
+ */
+extern short rtc_clock_get();
+
+/**
+ * Count of RTC interrupts handled since start (2.0.32, shown by GET CLOCK)
+ *
+ * @return the number of RTC periodic interrupts the MCP's handler has seen
+ */
+extern unsigned long rtc_get_ticks();
+
 #endif
