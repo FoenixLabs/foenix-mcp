@@ -258,47 +258,57 @@ unsigned char i_to_bcd(unsigned short n) {
  * labels = 0: none, 1: offset, 2: address
  */
 void dump_buffer(short channel, const unsigned char * buffer, short size, short labels) {
-    short i, j, ascii_idx;
-    char ascii_buffer[17];
+    char line[100];             /* one line: label, 16 bytes in hex, the same 16 as text */
+    char * p;
+    short i, j, n;
     unsigned char c;
 
-    for (j = 0; j < 17; j++) {
-        ascii_buffer[j] = 0;
-    }
-
-    for (i = 0; i < size; i++) {
-        c = buffer[i];
-
-        if (i % 16 == 0) {
-			printf(" %s\n", ascii_buffer);
-
-            for (j = 0; j < 17; j++) {
-                ascii_buffer[j] = 0;
-            }
-
-            ascii_idx = 0;
-
-            if (labels == 1) {
-				printf("%04X:", i);
-            } else if (labels == 2) {
-				printf("%024lX:", (unsigned long)buffer + 1);
-            }
-        }
-
-        if (isgraph(c)) {
-            ascii_buffer[ascii_idx++] = c;
+    /* 2.0.34: printed on the channel with print(); it used printf, which does not reach the screen,
+     * so DUMP showed nothing. One line per 16 bytes, the label first: the offset or the address
+     * of the line's first byte (it showed the buffer's address + 1 on every line).
+     */
+    for (i = 0; i < size; i += 16) {
+        p = line;
+        if (labels == 1) {
+            sprintf(p, "%04X:", (unsigned short)i);
+        } else if (labels == 2) {
+            sprintf(p, "%08lX:", (unsigned long)(buffer + i));
         } else {
-            ascii_buffer[ascii_idx++] = '.';
+            *p = 0;
+        }
+        p += strlen(p);
+
+        n = size - i;
+        if (n > 16) {
+            n = 16;
         }
 
-        if ((i % 8) == 0) {
-            printf(" ");
+        /* The bytes in hex, with an extra space after the eighth */
+        for (j = 0; j < 16; j++) {
+            if (j % 8 == 0) {
+                *p++ = ' ';
+            }
+            if (j < n) {
+                sprintf(p, "%02X", buffer[i + j]);
+                p += 2;
+            } else {
+                *p++ = ' ';
+                *p++ = ' ';
+            }
         }
 
-		printf("%02X", c);
+        /* The same bytes as text: '.' for what cannot be printed */
+        *p++ = ' ';
+        *p++ = ' ';
+        for (j = 0; j < n; j++) {
+            c = buffer[i + j];
+            *p++ = isgraph(c) ? c : '.';
+        }
+        *p++ = '\n';
+        *p = 0;
+
+        print(channel, line);
     }
-
-	printf(" %s\n", ascii_buffer);
 }
 
 /**

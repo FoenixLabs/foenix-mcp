@@ -186,6 +186,15 @@ extern short fsys_mkdir(const char * path);
 extern short fsys_delete(const char * path);
 
 /**
+ * Get the free space on the drive of a path, in KB (2.0.34)
+ *
+ * @param path a path on the drive ("" = the current drive)
+ * @param kbytes where to store the free space
+ * @return 0 on success, a negative number on error
+ */
+extern short fsys_getfree(const char * path, unsigned long * kbytes);
+
+/**
  * Rename a file or directory
  *
  * Inputs:
