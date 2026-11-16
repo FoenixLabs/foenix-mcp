@@ -2,6 +2,7 @@
  * Provide the various functions needed for the COPY command
  */
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,6 +10,7 @@
 #include "dos_copy.h"
 #include "constants.h"
 #include "errors.h"
+#include "log.h"
 #include "simpleio.h"
 #include "syscalls.h"
 #include "utilities.h"
@@ -23,6 +25,10 @@
 #define ERR_COPY_DST_IS_DIR     -1002
 #define ERR_COPY_NO_SRC_DIR     -1003
 #define ERR_COPY_NO_DST_DIR     -1004
+#define ERR_MOVE_EXISTS         -1005   /* 2.0.34: MOVE does not overwrite */
+#define ERR_MOVE_DIR_DRIVE      -1006   /* 2.0.34: a folder cannot move to another drive */
+#define ERR_MOVE_COPY_SIZE      -1007   /* 2.0.34: the copy on the other drive came out wrong */
+#define ERR_MOVE_NOT_FOLDER     -1008   /* 2.0.34: several files need a folder to go to */
 
 /**
  * COPY is a complicated command, hence getting its own file.
@@ -83,6 +89,7 @@ static short fsys_copy(const char * src_path, const char * dst_path) {
     short fd_dst = -1;
     short result = 0;
     short n = 0;
+    short error = 0;
 
     // Check to make sure the source and destination paths are not the same
     if (strcicmp(src_path, dst_path) == 0) {
@@ -115,18 +122,27 @@ static short fsys_copy(const char * src_path, const char * dst_path) {
         fd_dst = sys_fsys_open(dst_path, FSYS_WRITE | FSYS_CREATE_ALWAYS);
         if (fd_dst > 0) {
             // Copy the file...
+            // 2.0.34: a read or write error (a full disk, say) is reported now. It used to return
+            // 0 anyway, which MOVE cannot have: it deletes the source after a good copy.
             do {
                 // Try to read a chunk of data from the file
                 n = sys_chan_read(fd_src, buffer, 256);
-                if (n > 0) {
+                if (n < 0) {
+                    error = n;
+                } else if (n > 0) {
                     // Try to write what we got
                     result = sys_chan_write(fd_dst, buffer, n);
+                    if (result < 0) {
+                        error = result;
+                    } else if (result != n) {
+                        error = FSYS_ERR_DENIED;       // Fewer bytes written: the disk is full
+                    }
                 }
-            } while ((n > 0) && (result >= 0));
+            } while ((n > 0) && (error == 0));
 
             sys_fsys_close(fd_src);
             sys_fsys_close(fd_dst);
-            return 0;
+            return error;
 
         } else {
             // Close the source file and return the error
@@ -260,6 +276,22 @@ static void fsys_copy_error(short screen, short n) {
             print(screen, "Unable to copy a file: cannot copy to a directory.\n");
             break;
 
+        case ERR_MOVE_EXISTS:
+            print(screen, "Unable to move: the destination already exists.\n");
+            break;
+
+        case ERR_MOVE_DIR_DRIVE:
+            print(screen, "Unable to move: a folder can only move on the same drive.\n");
+            break;
+
+        case ERR_MOVE_COPY_SIZE:
+            print(screen, "Unable to move: the copy came out wrong; the original is kept.\n");
+            break;
+
+        case ERR_MOVE_NOT_FOLDER:
+            print(screen, "Unable to move: the destination of several files must be a folder.\n");
+            break;
+
         default:
             sprintf(line, "Unable to copy the files: %d\n", n);
             print(screen, line);
@@ -357,6 +389,204 @@ short cmd_copy(short screen, int argc, const char * argv[]) {
         }
     } else {
         print(screen, "Unable to parse the source path.\n");
+        free(x);
+        return -1;
+    }
+
+    free(x);
+    return 0;
+}
+
+/*
+ * MOVE (2.0.34)
+ *
+ * MOVE <src path> <dst path> moves a file or a folder, or with a pattern (* ?) in the file name
+ * several files, like COPY takes them. On the same drive it is a rename, which also moves folders
+ * and is quick whatever the size. To another drive a file is copied, the copy's size is checked,
+ * and only then the original is deleted. MOVE never overwrites an existing file.
+ */
+
+/*
+ * Are two absolute paths on the same drive? The drive is the first part: "/sd", "/hd", "/fd".
+ *
+ * Inputs:
+ * a, b = absolute paths
+ *
+ * Returns:
+ * true if their first parts are the same (not case sensitive)
+ */
+static bool move_same_drive(const char * a, const char * b) {
+    short k = 1;
+    while ((a[k] != 0) && (a[k] != '/') && (toupper(a[k]) == toupper(b[k]))) {
+        k++;
+    }
+    return ((a[k] == 0) || (a[k] == '/')) && ((b[k] == 0) || (b[k] == '/'));
+}
+
+/*
+ * Is the path a folder to move things into? A drive's root ("/sd", "/sd/") counts, though the
+ * file system cannot give information about it.
+ *
+ * Inputs:
+ * path = an absolute path (a final '/' is removed, except from a drive's root)
+ *
+ * Returns:
+ * true if it is a folder
+ */
+static bool move_is_folder(char * path) {
+    char * slash;
+    short len = strlen(path);
+
+    if ((len > 1) && (path[len - 1] == '/')) {
+        path[len - 1] = 0;
+    }
+    slash = strchr(path + 1, '/');
+    if (slash == 0) {
+        return true;                    // Only the drive: "/sd"
+    }
+    return is_directory(path);
+}
+
+/*
+ * Move one file or folder to its new path
+ *
+ * Inputs:
+ * src_path = the absolute path of the file or folder
+ * dst_path = its absolute new path (not an existing file or folder)
+ *
+ * Returns:
+ * 0 on success, a negative number on error
+ */
+static short fsys_move(const char * src_path, const char * dst_path) {
+    t_file_info src, dst;
+    short result;
+
+    if (strcicmp(src_path, dst_path) == 0) {
+        return ERR_COPY_SELF;
+    }
+
+    result = sys_fsys_stat(src_path, &src);
+    if (result < 0) {
+        return result;                  // The source does not exist
+    }
+
+    if (sys_fsys_stat(dst_path, &dst) >= 0) {
+        return ERR_MOVE_EXISTS;
+    }
+
+    if (move_same_drive(src_path, dst_path)) {
+        // On the same drive the file system moves it: only the folder entries change.
+        // (Not on another drive: there it would land on the source's drive.)
+        return fsys_rename(src_path, dst_path);
+    }
+
+    if (src.attributes & FSYS_AM_DIR) {
+        return ERR_MOVE_DIR_DRIVE;
+    }
+
+    // Another drive: copy, check the copy, then delete the original
+    result = fsys_copy(src_path, dst_path);
+    if (result < 0) {
+        sys_fsys_delete(dst_path);      // Do not leave half a file
+        return result;
+    }
+
+    result = sys_fsys_stat(dst_path, &dst);
+    if ((result < 0) || (dst.size != src.size)) {
+        sys_fsys_delete(dst_path);
+        return ERR_MOVE_COPY_SIZE;
+    }
+
+    return sys_fsys_delete(src_path);
+}
+
+/**
+ * The DOS MOVE command itself:
+ * MOVE <src path> <dst path>
+ */
+short cmd_move(short screen, int argc, const char * argv[]) {
+    char * x;
+    char * src_path, * dst_path, * src_file, * dst_file;
+    char * name;
+    t_file_info file;
+    short result = 0;
+    short dir;
+
+    if (argc != 3) {
+        print(screen, "USAGE: MOVE <src path> <dst path>\n");
+        return -1;
+    }
+
+    x = (char *)malloc(4 * MAX_PATH_LEN);
+    if (x == 0) {
+        print(screen, "Cannot move: out of memory\n");
+        return -1;
+    }
+    src_path = x;
+    dst_path = src_path + MAX_PATH_LEN;
+    src_file = dst_path + MAX_PATH_LEN;
+    dst_file = src_file + MAX_PATH_LEN;
+
+    strncpy(src_path, argv[1], MAX_PATH_LEN - 1);
+    src_path[MAX_PATH_LEN - 1] = 0;
+    strncpy(dst_path, argv[2], MAX_PATH_LEN - 1);
+    dst_path[MAX_PATH_LEN - 1] = 0;
+    if (fsys_copy_path_absolute(src_path) || fsys_copy_path_absolute(dst_path)) {
+        print(screen, "Unable to find the current working directory.\n");
+        free(x);
+        return -1;
+    }
+
+    // A source given as "folder/" means the folder itself
+    if ((strlen(src_path) > 1) && (src_path[strlen(src_path) - 1] == '/')) {
+        src_path[strlen(src_path) - 1] = 0;
+    }
+    name = strrchr(src_path, '/') + 1;
+
+    if (strchr(name, '*') || strchr(name, '?')) {
+        // A pattern: every match goes into the destination folder
+        if (!move_is_folder(dst_path)) {
+            result = ERR_MOVE_NOT_FOLDER;
+        } else {
+            strcpy(src_file, name);     // The pattern
+            name[0] = 0;                // src_path is now the folder, with its final '/'
+            dir = sys_fsys_findfirst(src_path, src_file, &file);
+            if (dir < 0) {
+                result = dir;
+            } else {
+                while ((result == 0) && (file.name[0] != 0)) {
+                    snprintf(src_file, MAX_PATH_LEN, "%s%s", src_path, file.name);
+                    snprintf(dst_file, MAX_PATH_LEN, "%s%s%s", dst_path,
+                             (dst_path[strlen(dst_path) - 1] == '/') ? "" : "/", file.name);
+                    result = fsys_move(src_file, dst_file);
+                    if (result == 0) {
+                        result = sys_fsys_findnext(dir, &file);
+                        if (result > 0) {
+                            result = 0;
+                        }
+                    }
+                }
+                sys_fsys_closedir(dir);
+            }
+        }
+
+    } else {
+        // One file or folder: into the destination folder, or to the new name
+        if (move_is_folder(dst_path)) {
+            snprintf(dst_file, MAX_PATH_LEN, "%s%s%s", dst_path,
+                     (dst_path[strlen(dst_path) - 1] == '/') ? "" : "/", name);
+        } else {
+            strcpy(dst_file, dst_path);
+        }
+        result = fsys_move(src_path, dst_file);
+    }
+
+    if (result < 0) {
+        if (result <= ERR_COPY_SELF) {
+            fsys_copy_error(screen, result);
+        } else {
+            err_print(screen, "Unable to move", result);
+        }
         free(x);
         return -1;
     }
