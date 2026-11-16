@@ -129,6 +129,8 @@ coldboot:   lea ___STACK,sp
             ; Clear BSS segment
             lea	   ___BSSSTART,a0
             move.l #___BSSSIZE,d0
+            addq.l #3,d0            ; 2.0.34: whole longs, or the loop below (4 bytes at a time,
+            and.l  #$FFFFFFFC,d0    ; stops only at exactly 0) runs on through all memory
             beq.s  callmain
 
             move.l #0,d1
