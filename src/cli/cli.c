@@ -1190,22 +1190,30 @@ short cli_repl(short channel) {
     return 0;
 }
 
+/* 2.0.33: set once cli_prepare_screen() has run, so cli_start_repl() does not do it twice */
+static short cli_screen_prepared = 0;
+
 /**
- * Start the read-eval-print loop
+ * Set up the CLI's console and screen(s): title bar, banner, start-up folder
+ *
+ * 2.0.33. Split off from cli_start_repl(), so the boot code can call it BEFORE it runs the
+ * start-up file (system/mcp.init). Why: a program started from mcp.init does not return to the
+ * boot code when it ends; the MCP restarts the command line with cli_rerepl() instead, which only
+ * shows a prompt. The screen set-up in cli_start_repl() was then skipped: no banner, and the text
+ * kept the colour the screen got at start-up (white instead of light gray). Done first, the screen
+ * is ready whatever mcp.init does, and its messages appear in the normal window. Setting the
+ * folder first also means a CD in mcp.init now stays in effect.
  *
  * @param channel the channel to use for interactions
- * @param init_cwd the initial current working directory
+ * @param init_cwd the initial current working directory (0 = leave it)
  */
-short cli_start_repl(short channel, const char * init_cwd) {
-    char cwd_buffer[MAX_PATH_LEN];
+void cli_prepare_screen(short channel, const char * init_cwd) {
     short result = 0;
     short i = 0;
-    t_point cursor;
 
     g_current_channel = channel;
-//    TRACE1("CLI Current Channel: %d", g_current_channel);
+
     // Make sure we can see text properly on the channel
-//    INFO("ENTERING > cli_ensure_console(g_current_channel) <<<<<<<<<<<<<<");       
     cli_ensure_console(g_current_channel);
 
     if (init_cwd != 0) {
@@ -1216,15 +1224,45 @@ short cli_start_repl(short channel, const char * init_cwd) {
             print(g_current_channel, message);
         }
     }
-//    INFO("EXITING > cli_ensure_console(g_current_channel) <<<<<<<<<<<<<<");
 
-//    INFO("ENTERING > cli_command_get(cli_command_path) <<<<<<<<<<<<<<");       
+    // Set up the screen(s)
+    cli_setup_screen(channel, init_cwd, 1);             // Initialize our main main screen
+    if (cli_sys_info.screens > 1) {
+        for (i = 0; i < cli_sys_info.screens; i++) {    // Set up each screen we aren't using
+            if (i != channel) {
+                cli_setup_screen(i, init_cwd, 0);
+            }
+        }
+    }
+
+    cli_screen_prepared = 1;
+}
+
+/**
+ * Start the read-eval-print loop
+ *
+ * Sets up the screen first, unless the boot code already did that with cli_prepare_screen().
+ *
+ * @param channel the channel to use for interactions
+ * @param init_cwd the initial current working directory
+ */
+short cli_start_repl(short channel, const char * init_cwd) {
+    short result = 0;
+
     // Start up the command shell
     cli_command_get(cli_command_path);
-//    INFO("EXITING > cli_command_get(cli_command_path) <<<<<<<<<<<<<<");
     if (cli_command_path[0] != 0) {
         // Over-ride path provided, boot it
         char * argv[1] = { cli_command_path };
+
+        if (!cli_screen_prepared) {
+            // As before 2.0.33: only the console and folder, the other shell draws its own screen
+            g_current_channel = channel;
+            cli_ensure_console(g_current_channel);
+            if (init_cwd != 0) {
+                sys_fsys_set_cwd(init_cwd);
+            }
+        }
 
         result = sys_proc_run(cli_command_path, 1, argv);
         if (result) {
@@ -1236,18 +1274,9 @@ short cli_start_repl(short channel, const char * init_cwd) {
         }
         return 0;
     } else {
-        INFO("ENTERING > cli_setup_screen(channel, init_cwd, 1) <<<<<<<<<<<<<<");
-        // Set up the screen(s)
-        cli_setup_screen(channel, init_cwd, 1);             // Initialize our main main screen
-        INFO("EXITING > cli_setup_screen(channel, init_cwd, 1) <<<<<<<<<<<<<<");             
-        if (cli_sys_info.screens > 1) {
-            for (i = 0; i < cli_sys_info.screens; i++) {             // Set up each screen we aren't using
-                if (i != channel) {
-                    cli_setup_screen(i, init_cwd, 0);
-                }
-            }
+        if (!cli_screen_prepared) {
+            cli_prepare_screen(channel, init_cwd);
         }
-
         return cli_repl(channel);
     }
 }
