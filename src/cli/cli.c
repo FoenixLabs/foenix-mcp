@@ -59,6 +59,16 @@
 #define CLI_KEY_UP      0x8003
 #define CLI_KEY_DOWN    0x8004
 #define CLI_KEY_DEL     0x8005
+#define CLI_KEY_HOME    0x8006  /* 2.0.34: to the start of the line */
+#define CLI_KEY_END     0x8007  /* 2.0.34: to the end of the line */
+
+/* 2.0.34: Ctrl keys that move on the line, as in many command lines (Emacs style). They work on
+   every keyboard, also when an arrow key does not (the Left key of some A2560K keyboards sends
+   nothing at all). */
+#define CHAR_CTRL_A     0x01    /* to the start of the line, like Home */
+#define CHAR_CTRL_B     0x02    /* back one character, like Left */
+#define CHAR_CTRL_E     0x05    /* to the end of the line, like End */
+#define CHAR_CTRL_F     0x06    /* forward one character, like Right */
 #define CLI_KEY_MONITOR 0x8010  /* A2560K Monitor key */
 #define CLI_KEY_CTX     0x8011  /* A2560K CTX Switch key */
 #define CLI_KEY_HELP    0x8012  /* A2560K Menu/Help key */
@@ -611,6 +621,14 @@ short cli_translate_alpha(short modifiers, char code) {
             key_code |= CLI_KEY_LEFT;
             break;
 
+        case 'H':
+            key_code |= CLI_KEY_HOME;       /* 2.0.34: ESC [ H, as some terminals send Home */
+            break;
+
+        case 'F':
+            key_code |= CLI_KEY_END;        /* 2.0.34: ESC [ F, as some terminals send End */
+            break;
+
         default:
             return 0;
     }
@@ -653,6 +671,14 @@ short cli_translate_numeric(short modifiers, short code) {
     } else if (code == 3) {
         // DELETE key
         key_code |= CLI_KEY_DEL;
+
+    } else if (code == 1) {
+        // HOME key (2.0.34)
+        key_code |= CLI_KEY_HOME;
+
+    } else if (code == 4) {
+        // END key (2.0.34)
+        key_code |= CLI_KEY_END;
 
     } else {
         // Unknown escape code
@@ -832,6 +858,17 @@ short cli_readline(short channel, char * command_line) {
     do {
         key_code = cli_getchar(channel);
 
+        /* 2.0.34: the Ctrl keys for moving do exactly what their editing keys do */
+        if (key_code == CHAR_CTRL_A) {
+            key_code = CLI_KEY_HOME;
+        } else if (key_code == CHAR_CTRL_B) {
+            key_code = CLI_KEY_LEFT;
+        } else if (key_code == CHAR_CTRL_E) {
+            key_code = CLI_KEY_END;
+        } else if (key_code == CHAR_CTRL_F) {
+            key_code = CLI_KEY_RIGHT;
+        }
+
         if ((key_code & 0xF000) == 0) {
             // Ordinary key...
             char c = (char)(key_code & 0x00ff);
@@ -865,9 +902,23 @@ short cli_readline(short channel, char * command_line) {
                 }
 
             } else {
-                // Add key to command line
-                command_line[i++] = c;
-                sys_chan_write_b(channel, c);
+                // Add key to command line.
+                // 2.0.34: inserted at the cursor. It used to overwrite what was there, so going back
+                // with the arrow keys to correct something wiped out the rest of the line; and it
+                // did not stop at the end of the buffer.
+                short len = strlen(command_line);
+                if (len < MAX_COMMAND_SIZE - 1) {
+                    if (i < len) {
+                        // Make room: move the rest of the line one place right, here and on screen
+                        for (j = len; j > i; j--) {
+                            command_line[j] = command_line[j - 1];
+                        }
+                        command_line[len + 1] = 0;
+                        print(channel, "\x1b[1@");
+                    }
+                    command_line[i++] = c;
+                    sys_chan_write_b(channel, c);
+                }
             }
 
         } else {
@@ -932,6 +983,19 @@ short cli_readline(short channel, char * command_line) {
                         i = 0;
                         print(channel, "\x1b[3G\x1b[K");
                     }
+                    break;
+
+                case CLI_KEY_HOME:
+                    // 2.0.34: to the start of the line (same as Ctrl+Left)
+                    i = 0;
+                    print(channel, "\x1b[3G");
+                    break;
+
+                case CLI_KEY_END:
+                    // 2.0.34: to the end of the line (same as Ctrl+Right)
+                    i = strlen(command_line);
+                    sprintf(buffer, "\x1b[%dG", (short)(3 + i));
+                    print(channel, buffer);
                     break;
 
                 case CLI_KEY_DEL:
