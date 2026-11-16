@@ -77,6 +77,87 @@ This copy of the MCP is maintained for the A2560K Gen1, tested on the
 A2560K25 ("A2560Kc"). The flash images for the K25 and the K40 are the same
 build: the MCP finds out at start-up which board it runs on.
 
+### Version 2.0.34: a usable command line, LS and a small VI
+
+**Programs in any folder.** The loader looked for the file's extension in the
+whole path, so a folder with a dot in its name (`SpaceCadet.1/pinball_k.pgz`)
+made "file not found". It now takes the extension from the file name only, and
+searches in the folder the path names, so `../`, `./` and paths with dots in
+folder names work (`src/dev/fsys.c`).
+
+**Editing the command line.**
+- Typing inserts at the cursor instead of overwriting.
+- The line stops at 127 characters.
+- Home and End work.
+- Because the A2560K's Left key sends nothing, there are also keys for moving:
+
+| Key | Moves to |
+|---|---|
+| `Ctrl+A` | start of the line |
+| `Ctrl+E` | end of the line |
+| `Ctrl+B` | one place left |
+| `Ctrl+F` | one place right |
+
+`tests/keytest` shows what the keyboard sends.
+
+**Tab completion.** Tab completes the file or folder name before the cursor:
+- With one match, the rest is filled in, followed by `/` or a space.
+- With several matches, the part they share is filled in. If there's nothing
+  more to fill in, they're listed in columns.
+- The first word also matches the built-in commands.
+
+**New commands.**
+- `MOVE <src> <dst>` moves files or folders, and accepts `*` and `?`.
+  - On the same drive it renames.
+  - To another drive it copies, checks the size, then deletes the original.
+  - It never overwrites anything.
+- `ECHO <text>` prints the text, for example in `mcp.init`.
+- `LS [-l] [-a] [<path>]` is a Unix-like listing.
+  - The names are shown in columns.
+  - `-l` adds `drwxhs` flags, the exact size, and the date and time, with
+    totals and the free space at the end.
+  - `-a` also shows hidden and system files.
+  - `x` marks files the MCP can run: those whose extension has a loader
+    (`fsys_is_executable()`).
+- `VI <path>` is a very small vi for text files (`src/cli/vi.c`).
+  - Normal, insert and `:` modes.
+  - `hjkl`, `w b 0 $ gg G`, `/` and `n`, `i a o O`, `x dd yy p J r`.
+  - `:w :q :q! :wq` and `ZZ`.
+  - A file with CR LF line ends is written back the same way.
+  - There's no undo and there are no counts.
+  - The text is kept in the free program memory from `$0001_0000` up to the
+    top of memory. A file `LOAD`ed there is overwritten.
+
+**Better old commands.**
+- HELP, DIR, TYPE and LS pause after each screenful: any key goes on, `q`
+  stops.
+- `DEL` accepts `*` and `?`. It deletes matching files only, never folders.
+- DIR shows the right size for files of 1 MB and more, and ends with the free
+  space.
+- DUMP prints on the screen again: it used `printf`, which doesn't reach it.
+
+**Colours.**
+- `SET FG <colour>` and `SET BG <colour>` set the text and background colours,
+  either by name (16 names: `SET HELP` lists them) or as `RGBrrrgggbbb`. They
+  change text colours 7 and 0, so ANSI resets keep them. To have them every
+  time, put them in `mcp.init`.
+- The start-up colours now really are grey on black on every machine. Before,
+  an always-true `#if MODEL_FOENIX_A2560X` gave white on dark grey.
+
+**Start-up fix.** The BSS clear in the start-up code stopped only when its
+count was exactly 0. When the BSS size wasn't a multiple of 4, it ran through
+all memory and the MCP never started: the border stayed green after lvboot. The
+size is now rounded up to whole longs. Both `m68040/startup_m68040.s` and
+`m68k/startup_m68k.s` are fixed.
+
+Example `system/mcp.init`:
+
+```
+SET FG lightgreen
+SET BG black
+ECHO Welcome back
+```
+
 ### Version 2.0.33: mcp.init runs to the end, programs return, longer history
 
 **Screen set up before `mcp.init`.** When the MCP boots from SD card or hard
