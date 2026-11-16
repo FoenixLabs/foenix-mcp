@@ -2,6 +2,7 @@
             xref _cli_rerepl
             xref _panic
             xref _panic_number
+            xref _proc_return_point
 
             xdef _syscall
             xdef ___exit
@@ -9,6 +10,7 @@
             xdef _int_disable_all
             xdef _call_user
             xdef _restart_cli
+            xdef _proc_return
             xdef _cache_hw_enable
             xdef _cache_flush
             xdef _cache_data_off
@@ -468,18 +470,44 @@ h_trap_elev ori #$2000,(a7)             ; Change the caller's privilege to super
 ;
 ; Jump into a user mode code
 ;
+; 2.0.33: before jumping, a "return point" is saved on the supervisor stack (52 bytes):
+;   +0  the previous return point (0 = none): a program can start a program
+;   +4  the user stack pointer of whoever called us
+;   +8  d2-d7/a2-a6, the registers a C caller expects to be kept
+; and _proc_return_point points at it. When the program ends (sys_exit -> proc_exit), _proc_return
+; goes back to it, so call_user returns to its caller like a normal subroutine: the command line
+; or mcp.init then carries on. Before, the end of a program always restarted the command line.
+;
+CU_SAVED    = 52                        ; bytes of the return point, see above
+
 _call_user:
-            ; Set up the user stack
+            movem.l d2-d7/a2-a6,-(a7)   ; The caller's registers
+            move.l usp,a0
+            move.l a0,-(a7)             ; The caller's user stack
+            move.l _proc_return_point,-(a7) ; Link to the previous return point
+
+            ; Set up the user stack. Normally at the top of the program stack area. When a program
+            ; starts a program, that area holds the first program's stack, which must survive:
+            ; then start just below where it is now.
             move.l #$00010000,a0        ; Get the pointer to the process's stack
-            move.l (12,a7),d1           ; Get the number of parameters passed
-            move.l (16,a7),a1           ; Get the pointer to the parameters
+            tst.l (a7)                  ; Started by a program (an earlier return point)?
+            beq cu_stack
+            move.l (4,a7),d0            ; Yes: below the caller's user stack,
+            sub.l #16,d0                ; with a little room,
+            and.l #$FFFFFFFC,d0         ; on a long word
+            move.l d0,a0
+cu_stack:
+            move.l a7,_proc_return_point ; This is where the program comes back to
+
+            move.l (CU_SAVED+12,a7),d1  ; Get the number of parameters passed
+            move.l (CU_SAVED+16,a7),a1  ; Get the pointer to the parameters
             move.l a1,-(a0)             ; Push the parameters list
             move.w d1,-(a0)             ; Push the parameter count
             move.l a0,usp               ; Set the User Stack Pointer
 
 
             ; Set up the system stack
-            move.l (4,a7),a0            ; Get the pointer to the code to start
+            move.l (CU_SAVED+4,a7),a0   ; Get the pointer to the code to start
             move.w #0,-(a7)             ; Push the fake vector offset
             move.l a0,-(a7)             ; Push it as the starting address
             move.w #$0000,-(a7)         ; Push the user's initial SR (to switch to user mode)
@@ -498,8 +526,24 @@ _call_user:
 
 _restart_cli:
             lea ___STACK,sp
+            clr.l _proc_return_point    ; 2.0.33: the stack is gone, so are the return points
             jsr _cli_rerepl
             bra _restart_cli
+
+;
+; 2.0.33: end the running program and return to where call_user was called (see there).
+; C: void proc_return(int result) -- does not return to its own caller; call_user returns.
+; Only call it when _proc_return_point is not 0. Everything the program left on the supervisor
+; stack (its system call's frame, for one) is dropped by going back to the saved stack pointer.
+;
+_proc_return:
+            move.l (4,a7),d0            ; The program's result, also returned by call_user
+            move.l _proc_return_point,a7 ; Back to the stack as call_user left it
+            move.l (a7)+,_proc_return_point ; The previous return point is current again
+            move.l (a7)+,a0
+            move.l a0,usp               ; The caller's user stack
+            movem.l (a7)+,d2-d7/a2-a6   ; The caller's registers
+            rts                         ; Return from call_user
 
 ;
 ; 2.0.29: 68040 / 68060 cache control (see src/cache.h for the C side).

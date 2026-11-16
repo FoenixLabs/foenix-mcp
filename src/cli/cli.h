@@ -41,6 +41,13 @@ typedef short (*cli_cmd_handler)(short screen, int argc, const char * argv[]);
 extern short cli_init();
 
 /**
+ * Make sure the console is set up the way the CLI needs it (echo off, ANSI on, cursor on, text mode)
+ *
+ * @param channel the channel to check
+ */
+extern void cli_ensure_console(short channel);
+
+/**
  * Set up the console and screen(s) for the CLI (2.0.33: the boot code calls it before mcp.init)
  *
  * @param channel the channel to use for interactions
