@@ -1302,6 +1302,14 @@ short cli_exec_batch(short channel, const char * path) {
         do {
             result = sys_chan_readline(fd, command_line, MAX_COMMAND_SIZE);
             if (result > 0) {
+                /* 2.0.33: drop the line ending. The file system hands the line over with its "\n"
+                 * (and "\r" for a file made on Windows), and the commands took that as part of the
+                 * last word: SET CLOCK 24 saw "24\n" and refused it. Typed lines never have one. */
+                short len = strlen(command_line);
+                while ((len > 0) && ((command_line[len - 1] == '\n') || (command_line[len - 1] == '\r'))) {
+                    command_line[--len] = 0;
+                }
+
                 // We got a line, so parse it
                 cli_process_line(channel, command_line);
             }
