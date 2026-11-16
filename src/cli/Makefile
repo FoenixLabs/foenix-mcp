@@ -38,7 +38,7 @@ INCLUDES=-I.. -I../include
 CFLAGS=$(INCLUDES) $(CFLAGS_FOR_UNIT) -l
 ASFLAGS=$(INCLUDES)
 
-SRCS = cli.c dos_cmds.c dos_copy.c mem_cmds.c settings.c sound_cmds.c test_cmd2.c vge_test.c $(SRCS_FOR_UNIT)
+SRCS = cli.c dos_cmds.c dos_copy.c mem_cmds.c settings.c sound_cmds.c test_cmd2.c vge_test.c vi.c $(SRCS_FOR_UNIT)
 OBJS = $(patsubst %.c,%.o,$(SRCS))
 OBJS4RM = $(subst /,\\,$(OBJS))
 
