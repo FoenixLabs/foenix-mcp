@@ -262,4 +262,12 @@ extern short fsys_load(const char * path, long destination, long * start);
  */
 extern short fsys_register_loader(const char * extension, p_file_loader loader);
 
+/**
+ * Tell whether the MCP can run a file: its extension has a loader (2.0.34)
+ *
+ * @param name the file name (a path is fine)
+ * @return 1 if a loader is registered for its extension, 0 if not
+ */
+extern short fsys_is_executable(const char * name);
+
 #endif
