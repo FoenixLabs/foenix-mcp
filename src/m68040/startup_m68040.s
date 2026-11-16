@@ -203,7 +203,9 @@ tr_none:
 
             lea	___BSSSTART,a0
             move.l #___BSSSIZE,d0
-            beq	callmain
+            addq.l #3,d0            ; 2.0.34: whole longs. The loop below clears 4 bytes at a time and stops
+            and.l #$FFFFFFFC,d0     ; only at exactly 0: a size that is not a multiple of 4 ran on through
+            beq	callmain            ; all memory and the MCP never started (green border)
 
 clrloop:    move.l #0,(a0)+
             subq.l #4,d0
