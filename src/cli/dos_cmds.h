@@ -26,6 +26,11 @@ extern short cmd_mkdir(short screen, int argc, const char * argv[]);
 extern short cmd_del(short screen, int argc, const char * argv[]);
 
 /*
+ * ECHO <text> (2.0.34): print the text
+ */
+extern short cmd_echo(short screen, int argc, const char * argv[]);
+
+/*
  * Set the current working directory
  */
 extern short cmd_cd(short screen, int argc, const char * argv[]);
