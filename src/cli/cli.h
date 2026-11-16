@@ -41,6 +41,14 @@ typedef short (*cli_cmd_handler)(short screen, int argc, const char * argv[]);
 extern short cli_init();
 
 /**
+ * Set up the console and screen(s) for the CLI (2.0.33: the boot code calls it before mcp.init)
+ *
+ * @param channel the channel to use for interactions
+ * @param init_cwd the initial current working directory
+ */
+extern void cli_prepare_screen(short channel, const char * init_cwd);
+
+/**
  * Start the read-eval-print loop
  *
  * @param channel the channel to use for interactions

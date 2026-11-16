@@ -528,24 +528,34 @@ void boot_from_bdev(short device) {
         short cli_screen = cli_txt_screen_get();
 
         if (device >= 0) {
+            switch (device) {
+                case BDEV_SDC:  strcpy(initial_path, "/sd"); break;
+                case BDEV_FDC:  strcpy(initial_path, "/fd"); break;
+                case BDEV_HDC:  strcpy(initial_path, "/hd"); break;
+                default:        break;
+            }
+
+            /* 2.0.33: set up the command line's screen (title bar, banner, colours, folder) BEFORE the
+             * start-up file. A program started from mcp.init does not come back here when it ends: the
+             * MCP restarts the command line with cli_rerepl(), and the set-up in cli_start_repl() below
+             * was skipped (no banner, white text). See cli_prepare_screen(). */
+            cli_prepare_screen(cli_screen, initial_path);
+
             DEBUG("Execute startup file on boot device (if present)");
             switch (device) {
                 case BDEV_SDC:
-                    strcpy(initial_path, "/sd");
                     if (cli_exec_batch(cli_screen, MCP_INIT_SDC) != 0) {
                         cli_exec_batch(cli_screen, MCP_INIT_HDC);
                     }
                     break;
 
                 case BDEV_FDC:
-                    strcpy(initial_path, "/fd");
                     if (cli_exec_batch(cli_screen, MCP_INIT_FDC) != 0) {
                         cli_exec_batch(cli_screen, MCP_INIT_HDC);
                     }
                     break;
 
                 case BDEV_HDC:
-                    strcpy(initial_path, "/hd");
                     cli_exec_batch(cli_screen, MCP_INIT_HDC);
                     break;
 
