@@ -77,6 +77,47 @@ This copy of the MCP is maintained for the A2560K Gen1, tested on the
 A2560K25 ("A2560Kc"). The flash images for the K25 and the K40 are the same
 build: the MCP finds out at start-up which board it runs on.
 
+### Version 2.0.33: mcp.init runs to the end, programs return, longer history
+
+**Screen set up before `mcp.init`.** When the MCP boots from SD card or hard
+drive (F1 / F2, or the boot DIP switches), it ran `system/mcp.init` before the
+command line had set up its screen. A program started from `mcp.init` then
+left the screen without banner and with white text (the start-up colour)
+instead of light gray. The set-up (console, start-up folder, title bar,
+banner) is now `cli_prepare_screen()` in `src/cli/cli.c`, and `src/boot.c`
+calls it before `mcp.init`. The start-up folder is set first too, so a `CD` in
+`mcp.init` now stays in effect.
+
+**Line endings in `mcp.init`.** `cli_exec_batch()` handed every line to the
+command line with its `\n` (and `\r` for a file made on Windows) still on it,
+and the commands took that as part of the last word: `SET CLOCK 24` in
+`mcp.init` saw `24\n` and answered with its usage text and "general error".
+The line ending is now removed first.
+
+**Programs return to their caller.** The end of a program (`sys_exit`) always
+restarted the command line from scratch, so nothing after a program ran: not
+the rest of `mcp.init`, and not the command line's clean-up. Now
+`call_user` (`src/m68040/startup_m68040.s`) saves a return point on the
+supervisor stack before it starts a program, and `proc_exit()`
+(`src/proc.c`) goes back to it: the command line, or the next line of
+`mcp.init`, carries on. A program may start a program (its stack goes below
+the first one's). Without a return point (a program started through the
+debug port) the command line is restarted as before. The command history
+survives running a program. The program's exit code is not shown as an error;
+`proc_get_result()` has it. Only the 68040 machines (A2560K, A2560X, GenX)
+have this; the 68000 build keeps the old restart.
+
+**Command history.** Up / Down now go back through the last 50 commands
+instead of 5 (`MAX_HISTORY_DEPTH` in `src/cli/cli.c`, 6.4 KB of the MCP's
+RAM).
+
+Example `system/mcp.init` that uses all of this:
+
+```
+/sd/myprogram.pgz
+SET CLOCK 24
+```
+
 ### Version 2.0.32: lost interrupts fixed, clock in the title bar, memory guarded
 
 **Lost interrupts.** `int_clear` (`src/interrupt.c`) is meant to acknowledge
