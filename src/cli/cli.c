@@ -27,6 +27,7 @@
 #include "cli/settings.h"
 #include "cli/sound_cmds.h"
 #include "cli/test_cmds.h"
+#include "cli/vi.h"
 #include "dev/channel.h"
 #include "dev/console.h"
 #include "dev/ps2.h"
@@ -173,6 +174,7 @@ const t_cli_command g_cli_commands[] = {
     { "SYSINFO", "SYSINFO : prints information about the system", cmd_sysinfo },
     { "TEST", "TEST <feature> : run a test about a feature", cmd_test },
     { "TYPE", "TYPE <path> : print the contents of a text file", cmd_type },
+    { "VI", "VI <path> : edit a text file (vi keys; :wq writes and quits, :q! quits)", cmd_vi },
     { 0, 0 }
 };
 
