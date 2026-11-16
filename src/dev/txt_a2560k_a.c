@@ -605,12 +605,12 @@ void txt_a2560k_a_init() {
     /* Set the resolution */
     txt_a2560k_a_set_resolution(800, 600);                      /* Default resolution is 800x600 */
 
-    /* Set the default color: light grey on blue */
-#if MODEL_FOENIX_A2560X
-    txt_a2560k_a_set_color(0x0F, 0x08);
-#else
-    txt_a2560k_a_set_color(0x07, 0x04);
-#endif
+    /* Set the default colour.
+     * 2.0.34: grey text (7) on background 0 (black), on every model. This used "#if MODEL_FOENIX_A2560X",
+     * which is always true (it does not compare MODEL), so every machine started with the A2560X
+     * colours: white on background 8. SET FG / SET BG change colours 7 and 0.
+     */
+    txt_a2560k_a_set_color(0x07, 0x00);
 
     /* Set the font */
     txt_a2560k_a_set_font(8, 8, MSX_CP437_8x8_bin);             /* Use 8x8 font */

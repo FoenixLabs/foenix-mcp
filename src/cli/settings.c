@@ -44,6 +44,10 @@ typedef struct s_setting {
 static p_setting cli_first_setting;    /* Pointer to the first registered setting */
 static p_setting cli_last_setting;     /* Pointer to the last registered setting */
 
+#if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_A2560X || MODEL == MODEL_FOENIX_GENX
+static void color_help(short channel);
+#endif
+
 /*
  * Copy the name to a buffer as an upper case setting name
  *
@@ -200,6 +204,10 @@ void cli_set_help(short channel) {
         sys_chan_write(channel, setting->help, strlen(setting->help));
         sys_chan_write(channel, "\n", 1);
     }
+
+#if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_A2560X || MODEL == MODEL_FOENIX_GENX
+    color_help(channel);
+#endif
 }
 
 /*
@@ -212,7 +220,7 @@ short cli_cmd_set(short channel, int argc, const char * argv[]) {
     if (argc == 3) {
         result = cli_set_value(channel, argv[1], argv[2]);
         if (result != 0) {
-            sprintf(message, "Unable to change setting: %s", sys_err_message(result));
+            sprintf(message, "Unable to change setting: %s\n", sys_err_message(result));
             sys_chan_write(channel, message, strlen(message));
             return 0;
         }
@@ -220,6 +228,7 @@ short cli_cmd_set(short channel, int argc, const char * argv[]) {
 
     } else if ((argc == 2) && (strcmp(argv[1], "HELP") == 0 || strcmp(argv[1], "help") == 0 || strcmp(argv[1], "?") == 0)) {
         cli_set_help(channel);
+        return 0;
 
     } else {
         print(channel, "USAGE: SET <name> <value>\n");
@@ -247,7 +256,7 @@ short cli_cmd_get(short channel, int argc, const char * argv[]) {
                 return 0;
 
             } else {
-                sprintf(buffer, "Unable to get setting: %s", sys_err_message(result));
+                sprintf(buffer, "Unable to get setting: %s\n", sys_err_message(result));
                 sys_chan_write(channel, buffer, strlen(buffer));
                 return result;
             }
@@ -611,6 +620,238 @@ short cli_keycolor_get(short channel, char * value, short size)  {
 
 #endif
 
+#if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_A2560X || MODEL == MODEL_FOENIX_GENX
+
+/*
+ * SET FG and SET BG: the colours of the text screen.
+ *
+ * The screen does not store a colour per character, but a number (0-15)
+ * that points into a table of 16 colours (the "LUT"). Programs and the
+ * MCP itself pick those numbers, also through ANSI codes such as ESC[0m
+ * and ESC[37m. So instead of changing the numbers (which the next ANSI
+ * code would undo), these settings change the colours in the table:
+ *
+ *   - normal text uses number 7: SET FG changes colour 7
+ *   - the background uses number 0: SET BG changes colour 0. Vicky
+ *     shows that colour as transparent, so SET BG also sets the
+ *     screen's background colour register, which shows through
+ *
+ * Both are changed in the foreground and the background table, because
+ * the title bar swaps them (text 0 on background 7). Everything already
+ * on the screen changes colour at once. Other colours (bold text, the
+ * banner, ...) stay as they are.
+ */
+
+#define COLOR_FG_INDEX  7       /* LUT entry of normal text */
+#define COLOR_BG_INDEX  0       /* LUT entry of the background */
+
+typedef struct s_color_name {
+    const char * name;
+    unsigned long rgb;          /* 0x00RRGGBB */
+} t_color_name;
+
+/* The 16 predefined colours: the MCP's own start-up colours */
+static const t_color_name color_names[] = {
+    { "BLACK",       0x000000 },
+    { "RED",         0x800000 },
+    { "GREEN",       0x008000 },
+    { "YELLOW",      0x808000 },
+    { "BLUE",        0x000080 },
+    { "ORANGE",      0xAA5500 },
+    { "CYAN",        0x008080 },
+    { "GREY",        0x808080 },
+    { "DARKGREY",    0x555555 },
+    { "LIGHTRED",    0xFF0000 },
+    { "LIGHTGREEN",  0x55FF55 },
+    { "LIGHTYELLOW", 0xFFFF55 },
+    { "LIGHTBLUE",   0x5555FF },
+    { "PINK",        0xFF7FFF },
+    { "LIGHTCYAN",   0x55FFFF },
+    { "WHITE",       0xFFFFFF },
+    { 0, 0 }
+};
+
+static unsigned long color_fg = 0x808080;   /* what SET FG last set (start: GREY) */
+static unsigned long color_bg = 0x000000;   /* what SET BG last set (start: BLACK) */
+
+/*
+ * Turn a colour as the user typed it into an RGB value
+ *
+ * Inputs:
+ * value = a colour name (BLACK, RED, ... see color_names, any case), or
+ *         RGBrrrgggbbb with three decimal numbers 0-255 of three digits
+ *         each, e.g. RGB255128000 for orange
+ * rgb = where to put the colour as 0x00RRGGBB
+ *
+ * Returns:
+ * 0 on success, ERR_BAD_ARGUMENT if the colour is not understood
+ */
+static short color_parse(const char * value, unsigned long * rgb) {
+    short i, j;
+
+    for (i = 0; color_names[i].name != 0; i++) {
+        if (strcicmp(value, color_names[i].name) == 0) {
+            *rgb = color_names[i].rgb;
+            return 0;
+        }
+    }
+
+    /* RGB and exactly nine digits: three groups of three */
+    if ((toupper(value[0]) == 'R') && (toupper(value[1]) == 'G') && (toupper(value[2]) == 'B') && (strlen(value) == 12)) {
+        unsigned long result = 0;
+        for (i = 0; i < 3; i++) {
+            short part = 0;
+            for (j = 0; j < 3; j++) {
+                char c = value[3 + i * 3 + j];
+                if (!isdigit(c)) {
+                    return ERR_BAD_ARGUMENT;
+                }
+                part = part * 10 + (c - '0');
+            }
+            if (part > 255) {
+                return ERR_BAD_ARGUMENT;
+            }
+            result = (result << 8) | part;
+        }
+        *rgb = result;
+        return 0;
+    }
+
+    return ERR_BAD_ARGUMENT;
+}
+
+/*
+ * Write a colour as the user can type it back: its name if it is one of
+ * the 16, otherwise RGBrrrgggbbb
+ *
+ * Inputs:
+ * rgb = the colour as 0x00RRGGBB
+ * value = buffer for the text (at least 13 bytes)
+ */
+static void color_format(unsigned long rgb, char * value) {
+    short i;
+
+    for (i = 0; color_names[i].name != 0; i++) {
+        if (color_names[i].rgb == rgb) {
+            strcpy(value, color_names[i].name);
+            return;
+        }
+    }
+    sprintf(value, "RGB%03u%03u%03u", (unsigned short)((rgb >> 16) & 0xff),
+        (unsigned short)((rgb >> 8) & 0xff), (unsigned short)(rgb & 0xff));
+}
+
+/*
+ * Put a colour in one entry of both text colour tables of a screen
+ *
+ * Inputs:
+ * channel = the channel whose screen is meant
+ * index = the LUT entry (0-15)
+ * rgb = the colour as 0x00RRGGBB
+ *
+ * Returns:
+ * 0 on success, an error if the channel is not a screen
+ */
+static short color_store(short channel, short index, unsigned long rgb) {
+    volatile unsigned long * lut_fg;
+    volatile unsigned long * lut_bg;
+    short screen = sys_chan_device(channel);
+
+    /* The hardware wants AARRGGBB: always fully opaque */
+    rgb |= 0xFF000000;
+
+    if (screen == 0) {
+        /* Screen 0 is Vicky's channel B */
+        lut_fg = FG_CLUT_B;
+        lut_bg = BG_CLUT_B;
+    } else if (screen == 1) {
+        lut_fg = FG_CLUT_A;
+        lut_bg = BG_CLUT_A;
+    } else {
+        return ERR_BAD_ARGUMENT;
+    }
+
+    lut_fg[index] = rgb;
+    lut_bg[index] = rgb;
+
+    if (index == COLOR_BG_INDEX) {
+        /* Vicky shows background colour 0 as transparent: what is seen
+         * there is the screen's own background colour register (0x00RRGGBB)
+         */
+        if (screen == 0) {
+            *BackGroundControlReg_B = rgb & 0x00FFFFFF;
+        } else {
+            *BackGroundControlReg_A = rgb & 0x00FFFFFF;
+        }
+    }
+    return 0;
+}
+
+/*
+ * List the colour names for SET HELP
+ *
+ * Inputs:
+ * channel = the channel to print on
+ */
+static void color_help(short channel) {
+    short i;
+
+    print(channel, "Colours for FG and BG:");
+    for (i = 0; color_names[i].name != 0; i++) {
+        print(channel, " ");
+        print(channel, color_names[i].name);
+    }
+    print(channel, "\nor RGBrrrgggbbb, three numbers 0-255 (e.g. RGB255128000)\n");
+}
+
+/*
+ * SET FG <colour> -- the colour of normal text
+ */
+short cli_fg_set(short channel, const char * value) {
+    unsigned long rgb;
+    short result = color_parse(value, &rgb);
+    if (result == 0) {
+        result = color_store(channel, COLOR_FG_INDEX, rgb);
+        if (result == 0) {
+            color_fg = rgb;
+        }
+    }
+    return result;
+}
+
+/*
+ * GET FG -- the colour of normal text
+ */
+short cli_fg_get(short channel, char * value, short size) {
+    color_format(color_fg, value);
+    return 0;
+}
+
+/*
+ * SET BG <colour> -- the colour of the background
+ */
+short cli_bg_set(short channel, const char * value) {
+    unsigned long rgb;
+    short result = color_parse(value, &rgb);
+    if (result == 0) {
+        result = color_store(channel, COLOR_BG_INDEX, rgb);
+        if (result == 0) {
+            color_bg = rgb;
+        }
+    }
+    return result;
+}
+
+/*
+ * GET BG -- the colour of the background
+ */
+short cli_bg_get(short channel, char * value, short size) {
+    color_format(color_bg, value);
+    return 0;
+}
+
+#endif
+
 /**
  * Set the number of the text screen to use for interactions
  */
@@ -680,6 +921,9 @@ void cli_set_init() {
     sys_get_info(&info);
 
     cli_set_register("CLOCK", "CLOCK ON|OFF|12|24 -- show the time in the title bar (24 or 12 hours)", cli_clock_set, 0);
+#if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_A2560X || MODEL == MODEL_FOENIX_GENX
+    cli_set_register("BG", "BG <name>|RGBrrrgggbbb -- background colour (see SET HELP)", cli_bg_set, cli_bg_get);
+#endif
     cli_set_register("DATE", "DATE yyyy-mm-dd -- set the date in the realtime clock", cli_date_set, cli_date_get);
 
     if (info.screens == 1) {
@@ -688,6 +932,10 @@ void cli_set_init() {
         cli_set_register("FONT@0", "FONT@0 <path> -- set a font for the display #0", cli_font0_set, cli_font0_get);
         cli_set_register("FONT@1", "FONT@1 <path> -- set a font for the display #1", cli_font1_set, cli_font1_get);
     }
+
+#if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_A2560X || MODEL == MODEL_FOENIX_GENX
+    cli_set_register("FG", "FG <name>|RGBrrrgggbbb -- colour of normal text (see SET HELP)", cli_fg_set, cli_fg_get);
+#endif
 
     cli_set_register("KEYBOARD", "KEYBOARD <path> -- set the keyboard layout", cli_layout_set, cli_layout_get);
 

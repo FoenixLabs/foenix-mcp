@@ -265,7 +265,7 @@ short boot_screen(void) {
 
     /* Set a background color for the bitmap mode */
 #if HAS_DUAL_SCREEN
-    *BackGroundControlReg_B = 0x00202020;
+    *BackGroundControlReg_B = 0x00000000;    /* black, like the text background */
     screen = 0;
 #else
     *BackGroundControlReg_A = 0x00402040;

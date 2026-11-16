@@ -631,12 +631,12 @@ void txt_a2560k_b_init() {
     /* Set the resolution */
     txt_a2560k_b_set_resolution( 0, 0 ); // Values are now irrelevent, the dipswitch is chosing
 
-    /* Set default colour */
-#if MODEL_FOENIX_A2560X
-    txt_a2560k_b_set_color(0x0F, 0x08);
-#else
-    txt_a2560k_b_set_color(0x07, 0x04);
-#endif
+    /* Set the default colour.
+     * 2.0.34: grey text (7) on background 0 (black), on every model. This used "#if MODEL_FOENIX_A2560X",
+     * which is always true (it does not compare MODEL), so every machine started with the A2560X
+     * colours: white on background 8. SET FG / SET BG change colours 7 and 0.
+     */
+    txt_a2560k_b_set_color(0x07, 0x00);
 
     /* Set the font */
     txt_a2560k_b_set_font(8, 16, BM437_IBM_Model3_Alt4);         /* Use 8x16 font */
