@@ -102,11 +102,15 @@ short cmd_run(short screen, int argc, const char * argv[]) {
     sys_chan_ioctrl(screen, CON_IOCTRL_ECHO_ON, 0, 0);
     short result = proc_run(argv[0], argc, argv);
     if (result < 0) {
+        sys_chan_ioctrl(screen, CON_IOCTRL_ECHO_OFF, 0, 0);     /* 2.0.33: the command line types its own echo */
         err_print(screen, "Unable to execute file", result);
         return -1;
     }
 
-    sys_chan_ioctrl(screen, CON_IOCTRL_ECHO_OFF, 0, 0);
+    /* 2.0.33: the program has ended and we are back (before, the command line was restarted).
+     * The program may have left the screen in graphics mode, the cursor off or ANSI codes off:
+     * put the console back the way the command line needs it, as the restart used to do. */
+    cli_ensure_console(screen);
     return result;
 }
 

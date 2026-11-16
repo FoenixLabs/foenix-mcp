@@ -14,6 +14,7 @@
 #include "errors.h"
 #include "log.h"
 #include "dev/fsys.h"
+#include "sys_general.h"
 
 static const long k_default_stack = 0x00010000;     /* For now... we're just going to put the user stack under 0x00010000 */
 static int g_proc_result;
@@ -24,6 +25,23 @@ static int g_proc_result;
 extern void restart_cli();
 
 extern void call_user(long start, long stack, int argc, char * argv[]);
+
+#if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X
+/*
+ * 2.0.33: where a running program returns to when it ends (see call_user in startup_m68040.s).
+ * 0 = nowhere: the program was not started by call_user (e.g. through the debug port), or the
+ * command line was restarted since. Set and cleared by the assembly code only.
+ */
+void * proc_return_point = 0;
+
+/*
+ * Assembly routine: go back to the newest return point; call_user then returns to its caller
+ */
+extern void proc_return(int result);
+#define PROC_CAN_RETURN 1
+#else
+#define PROC_CAN_RETURN 0           /* the 68000 start-up code has no return points (yet) */
+#endif
 
 /*
  * Start a user mode process
@@ -47,14 +65,21 @@ void proc_exec(long start, long stack, int argc, char * argv[]) {
 /*
  * Quit the current user process
  *
- * NOTE: at the moment, this relaunches the CLI. In the future, this
- *       may cause execution to return to the program that started
- *       the user process.
+ * 2.0.33: returns to whoever started the program (the command line, a line of mcp.init, or another
+ * program): proc_run() then returns 0 there. Only when there is nowhere to return to is the command
+ * line restarted, as all versions before did. Why: with the restart, the rest of mcp.init after a
+ * program never ran, and the command line lost its state (history, clean-up after the program).
  *
  * Inputs:
+ * result = the program's exit code (read it with proc_get_result)
  */
 void proc_exit(int result) {
     g_proc_result = result;
+#if PROC_CAN_RETURN
+    if (proc_return_point != 0) {
+        proc_return(result);        /* does not come back here */
+    }
+#endif
     restart_cli();
 }
 
@@ -74,7 +99,9 @@ int proc_get_result() {
  * argv = the array of parameters
  *
  * Returns:
- * returns an error code on failure, will not return on success
+ * returns an error code on failure; 0 when the program has run and ended (2.0.33; before, it did not
+ * return on success). The program's own exit code is not returned here: a program ending with, say,
+ * -1 is not a failure to run it. Read that code with proc_get_result.
  */
 short proc_run(const char * path, int argc, char * argv[]) {
 
