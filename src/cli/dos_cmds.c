@@ -527,6 +527,349 @@ short cmd_dir(short screen, int argc, const char * argv[]) {
 }
 
 /*
+ * LS (2.0.34): a Unix-like listing that shows more than DIR
+ *
+ *   LS [-l] [-a] [<path>]
+ *
+ * <path> may be a folder, a single file, or a pattern with * and ?. Without -l the names are
+ * listed in columns, sorted, folders with a '/' after them. With -l there is one line per entry:
+ *
+ *   drwxhs       size  yyyy-mm-dd hh:mm  name
+ *
+ * The flags are drwxhs, '-' when not set:
+ *   d  a folder
+ *   r  readable: always (FAT has no way to hide a file from reading)
+ *   w  writable: unless the file is read-only (the only access flag FAT has)
+ *   x  the MCP can run it: a folder (it can be entered), or a file whose extension has a loader
+ *      (PGZ, PGX, ELF, ...)
+ *   h  hidden, s  system: FAT attributes, shown by LS -a and left out otherwise
+ * The size is in bytes. -a also shows hidden and system files.
+ */
+
+#define LS_MAX_COLUMN 48    /* names longer than this get a line of their own in the columns */
+
+/*
+ * Write the date and time of an entry as "yyyy-mm-dd hh:mm"
+ *
+ * FAT keeps the date as bits yyyyyyym mmmddddd (years since 1980) and the time as
+ * hhhhhmmm mmmsssss (seconds / 2). A file without a date has 0 there.
+ *
+ * Inputs:
+ * info = the directory entry
+ * text = buffer of at least 17 bytes
+ */
+static void ls_date(const t_file_info * info, char * text) {
+    if (info->date == 0) {
+        strcpy(text, "                ");
+    } else {
+        sprintf(text, "%04u-%02u-%02u %02u:%02u",
+            (unsigned short)(1980 + (info->date >> 9)), (unsigned short)((info->date >> 5) & 0x0f),
+            (unsigned short)(info->date & 0x1f), (unsigned short)(info->time >> 11),
+            (unsigned short)((info->time >> 5) & 0x3f));
+    }
+}
+
+/*
+ * Read the entries LS shows into a sorted list
+ *
+ * Inputs:
+ * path = the folder ("" = the current one)
+ * pattern = the names to show (* and ? allowed), or 0 for all
+ * all = 1 to include hidden and system files
+ * list = where to put the sorted list (free it with ls_free)
+ *
+ * Returns:
+ * the number of entries, or a negative error number if the folder could not be read
+ */
+static short ls_read(const char * path, const char * pattern, short all, p_dir_entry * list) {
+    t_file_info info;
+    p_dir_entry entry;
+    short dir, count = 0;
+
+    *list = 0;
+    if (pattern != 0) {
+        dir = sys_fsys_findfirst(path, pattern, &info);
+    } else {
+        dir = sys_fsys_opendir(path);
+        if ((dir >= 0) && (sys_fsys_readdir(dir, &info) != 0)) {
+            info.name[0] = 0;
+        }
+    }
+    if (dir < 0) {
+        return dir;
+    }
+
+    while (info.name[0] != 0) {
+        if (all || ((info.attributes & (AM_HID | AM_SYS)) == 0)) {
+            entry = (p_dir_entry)malloc(sizeof(t_dir_entry));
+            if (entry == 0) {
+                break;          /* out of memory: show what we have */
+            }
+            memcpy(&entry->info, &info, sizeof(t_file_info));
+            dir_entry_insert(list, entry);
+            count++;
+        }
+
+        if (pattern != 0) {
+            if (fsys_findnext(dir, &info) != 0) {
+                break;
+            }
+        } else if (sys_fsys_readdir(dir, &info) != 0) {
+            break;
+        }
+    }
+
+    fsys_closedir(dir);
+    return count;
+}
+
+/*
+ * Free a list made by ls_read
+ */
+static void ls_free(p_dir_entry list) {
+    p_dir_entry next;
+
+    while (list != 0) {
+        next = list->next;
+        free(list);
+        list = next;
+    }
+}
+
+/*
+ * Print the names in columns, top to bottom then left to right, as Unix ls does
+ *
+ * Inputs:
+ * screen = the channel (for the width of the screen)
+ * list = the sorted entries
+ * count = how many there are
+ */
+static void ls_columns(short screen, p_dir_entry list, short count) {
+    char buffer[MAX_PATH_LEN + 4];
+    p_dir_entry * table;
+    p_dir_entry entry;
+    t_rect region;
+    short i, row, col, rows, cols, width = 0, screen_width, len;
+
+    sys_txt_get_region(sys_chan_device(screen), &region);
+    screen_width = region.size.width;
+    if (screen_width < 20) {
+        screen_width = 80;
+    }
+
+    /* An array, so an entry can be found by its number */
+    table = (p_dir_entry *)malloc(count * sizeof(p_dir_entry));
+    if (table == 0) {
+        for (entry = list; entry != 0; entry = entry->next) {
+            sprintf(buffer, "%s%s\n", entry->info.name, (entry->info.attributes & AM_DIR) ? "/" : "");
+            if (cli_pager_print(buffer)) {
+                return;
+            }
+        }
+        return;
+    }
+
+    /* The column width: the longest name (up to LS_MAX_COLUMN), its '/' and two spaces */
+    for (entry = list, i = 0; entry != 0; entry = entry->next, i++) {
+        table[i] = entry;
+        len = strlen(entry->info.name) + ((entry->info.attributes & AM_DIR) ? 1 : 0);
+        if ((len > width) && (len <= LS_MAX_COLUMN)) {
+            width = len;
+        }
+    }
+    width += 2;
+    cols = screen_width / width;
+    if (cols < 1) {
+        cols = 1;
+    }
+    rows = (count + cols - 1) / cols;
+
+    for (row = 0; row < rows; row++) {
+        buffer[0] = 0;
+        for (col = 0; col < cols; col++) {
+            i = col * rows + row;
+            if (i >= count) {
+                break;
+            }
+            entry = table[i];
+            len = strlen(entry->info.name) + ((entry->info.attributes & AM_DIR) ? 1 : 0);
+            if (len > LS_MAX_COLUMN) {
+                /* Too long for a column: a line of its own (after what is on this line) */
+                if (buffer[0] != 0) {
+                    strcat(buffer, "\n");
+                    if (cli_pager_print(buffer)) {
+                        free(table);
+                        return;
+                    }
+                    buffer[0] = 0;
+                }
+                sprintf(buffer, "%s%s\n", entry->info.name, (entry->info.attributes & AM_DIR) ? "/" : "");
+                if (cli_pager_print(buffer)) {
+                    free(table);
+                    return;
+                }
+                buffer[0] = 0;
+                continue;
+            }
+            /* The last column needs no spaces after it */
+            sprintf(buffer + strlen(buffer), "%s%s", entry->info.name, (entry->info.attributes & AM_DIR) ? "/" : "");
+            if ((col < cols - 1) && (i + rows < count)) {
+                while (len++ < width) {
+                    strcat(buffer, " ");
+                }
+            }
+            /* Print what is there before it gets too long for the buffer */
+            if (strlen(buffer) + width > MAX_PATH_LEN) {
+                if (cli_pager_print(buffer)) {
+                    free(table);
+                    return;
+                }
+                buffer[0] = 0;
+            }
+        }
+        strcat(buffer, "\n");
+        if (cli_pager_print(buffer)) {
+            break;
+        }
+    }
+
+    free(table);
+}
+
+/*
+ * Print one line per entry with its attributes, size, date and name, and a total at the end
+ *
+ * Inputs:
+ * path = the folder (for the free space)
+ * list = the sorted entries
+ */
+static void ls_long(const char * path, p_dir_entry list) {
+    char buffer[MAX_PATH_LEN + 48];
+    char date[20];
+    char size[16];
+    p_dir_entry entry;
+    unsigned char a;
+    unsigned long total = 0, free_kb = 0;
+    short files = 0, folders = 0;
+
+    for (entry = list; entry != 0; entry = entry->next) {
+        a = entry->info.attributes;
+        ls_date(&entry->info, date);
+        if (a & AM_DIR) {
+            strcpy(size, "");
+            folders++;
+        } else {
+            sprintf(size, "%lu", (unsigned long)entry->info.size);
+            total += (unsigned long)entry->info.size;
+            files++;
+        }
+        sprintf(buffer, "%cr%c%c%c%c %10s  %s  %s%s\n",
+            (a & AM_DIR) ? 'd' : '-',
+            (a & AM_RDO) ? '-' : 'w',
+            ((a & AM_DIR) || fsys_is_executable(entry->info.name)) ? 'x' : '-',
+            (a & AM_HID) ? 'h' : '-',
+            (a & AM_SYS) ? 's' : '-',
+            size, date, entry->info.name, (a & AM_DIR) ? "/" : "");
+        if (cli_pager_print(buffer)) {
+            return;
+        }
+    }
+
+    sprintf(buffer, "%d folder%s, %d file%s, %lu bytes", folders, (folders == 1) ? "" : "s",
+        files, (files == 1) ? "" : "s", total);
+    if (fsys_getfree(path, &free_kb) == 0) {
+        if (free_kb < 10UL * 1024) {
+            sprintf(buffer + strlen(buffer), "; %lu KB free", free_kb);
+        } else {
+            sprintf(buffer + strlen(buffer), "; %lu MB free", free_kb / 1024);
+        }
+    }
+    strcat(buffer, "\n");
+    cli_pager_print(buffer);
+}
+
+/*
+ * LS [-l] [-a] [<path>]: list files, see above
+ *
+ * Inputs:
+ * screen = the channel to print on
+ * argc, argv = the command line
+ *
+ * Returns:
+ * 0 on success, a negative error number otherwise
+ */
+short cmd_ls(short screen, int argc, const char * argv[]) {
+    char arg[MAX_PATH_LEN];
+    char *path = 0, *pattern = 0, *slash;
+    p_dir_entry list = 0;
+    short i, count, is_long = 0, all = 0;
+    const char * o;
+
+    arg[0] = 0;
+    for (i = 1; i < argc; i++) {
+        if (argv[i][0] == '-') {
+            for (o = argv[i] + 1; *o != 0; o++) {
+                if ((*o == 'l') || (*o == 'L')) {
+                    is_long = 1;
+                } else if ((*o == 'a') || (*o == 'A')) {
+                    all = 1;
+                } else {
+                    print(screen, "USAGE: LS [-l] [-a] [<path>]\n");
+                    return ERR_BAD_ARGUMENT;
+                }
+            }
+        } else {
+            strncpy(arg, argv[i], MAX_PATH_LEN - 1);
+            arg[MAX_PATH_LEN - 1] = 0;
+        }
+    }
+
+    dir_parse_pattern(arg, &path, &pattern);
+    if (path == 0) {
+        path = "";
+    }
+
+    count = ls_read(path, pattern, all, &list);
+    if ((count < 0) && (pattern == 0) && (path[0] != 0)) {
+        /* Not a folder: perhaps a single file. Look for its name in its folder. */
+        slash = strrchr(path, '/');
+        if (slash == 0) {
+            pattern = path;
+            path = "";
+        } else if (slash[1] != 0) {
+            pattern = slash + 1;
+            if (slash == path) {
+                path = "/";
+            } else {
+                *slash = 0;
+            }
+        }
+        if (pattern != 0) {
+            count = ls_read(path, pattern, 1, &list);
+        }
+    }
+
+    if (count < 0) {
+        err_print(screen, "Unable to list", count);
+        return count;
+    }
+
+    cli_pager_start(screen);
+    if (count == 0) {
+        if (pattern != 0) {
+            print(screen, "No files match.\n");
+        }
+    } else if (is_long) {
+        ls_long(path, list);
+    } else {
+        ls_columns(screen, list, count);
+    }
+
+    ls_free(list);
+    return 0;
+}
+
+/*
  * Print the contents of a file to the screen
  */
 short cmd_type(short screen, int argc, const char * argv[]) {

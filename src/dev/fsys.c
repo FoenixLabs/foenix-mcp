@@ -1604,6 +1604,47 @@ short fsys_register_loader(const char * extension, p_file_loader loader) {
     return ERR_OUT_OF_HANDLES;
 }
 
+/*
+ * Tell whether the MCP can run a file: its extension has a loader (PGZ, PGX, ELF, ...)
+ *
+ * 2.0.34, for LS -l. Only the name is looked at, not the contents.
+ *
+ * Inputs:
+ * name = the file name (a path is fine: only the part after the last '/' counts)
+ *
+ * Returns:
+ * 1 if a loader is registered for the extension, 0 if not
+ */
+short fsys_is_executable(const char * name) {
+    char extension[MAX_EXT];
+    const char * slash = strrchr(name, '/');
+    const char * point;
+    short i;
+
+    if (slash != 0) {
+        name = slash + 1;
+    }
+    point = strrchr(name, '.');
+    if (point == 0) {
+        return 0;
+    }
+    point++;
+
+    /* The extension in upper case, as the loaders are registered; too long = no loader */
+    for (i = 0; point[i] != 0; i++) {
+        if (i >= MAX_EXT - 1) {
+            return 0;
+        }
+        extension[i] = toupper(point[i]);
+    }
+    extension[i] = 0;
+    if (i == 0) {
+        return 0;
+    }
+
+    return loader_exists(extension) ? 1 : 0;
+}
+
 /**
  * Initialize the file system
  *

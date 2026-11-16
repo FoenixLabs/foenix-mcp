@@ -31,6 +31,11 @@ extern short cmd_del(short screen, int argc, const char * argv[]);
 extern short cmd_echo(short screen, int argc, const char * argv[]);
 
 /*
+ * LS [-l] [-a] [<path>] (2.0.34): a Unix-like listing with sizes, dates and attributes
+ */
+extern short cmd_ls(short screen, int argc, const char * argv[]);
+
+/*
  * Set the current working directory
  */
 extern short cmd_cd(short screen, int argc, const char * argv[]);
