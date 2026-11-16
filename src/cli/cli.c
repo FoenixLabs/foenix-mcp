@@ -830,6 +830,279 @@ short cmd_credits(short channel, int argc, const char * argv[]) {
     return 0;
 }
 
+/*
+ * Insert a character into the command line at the cursor, here and on the screen
+ *
+ * 2.0.34. Typing used to overwrite the character under the cursor, so going back with the arrow
+ * keys to correct something wiped out the rest of the line; and it did not stop at the end of the
+ * buffer. Also used by name completion (Tab).
+ *
+ * Inputs:
+ * channel = the console channel the line is shown on
+ * command_line = the line being edited (MAX_COMMAND_SIZE bytes)
+ * i = the cursor position in the line
+ * c = the character to insert
+ *
+ * Returns:
+ * the new cursor position (i + 1, or i when the line is full)
+ */
+static short cli_insert_char(short channel, char * command_line, short i, char c) {
+    short len = strlen(command_line);
+    short j;
+
+    if (len >= MAX_COMMAND_SIZE - 1) {
+        return i;                               // Full: ignore the key
+    }
+
+    if (i < len) {
+        // Make room: move the rest of the line one place right, here and on screen
+        for (j = len; j > i; j--) {
+            command_line[j] = command_line[j - 1];
+        }
+        print(channel, "\x1b[1@");
+    }
+    command_line[len + 1] = 0;
+    command_line[i] = c;
+    sys_chan_write_b(channel, c);
+    return i + 1;
+}
+
+/*
+ * Does a name start with the given prefix? Not case sensitive, as the FAT file system.
+ *
+ * Inputs:
+ * name = the name to check
+ * prefix = what it should start with
+ * len = the number of characters of prefix to check
+ *
+ * Returns:
+ * 1 if it does, 0 if not
+ */
+static short cli_starts_with(const char * name, const char * prefix, short len) {
+    short k;
+    for (k = 0; k < len; k++) {
+        if ((name[k] == 0) || (toupper(name[k]) != toupper(prefix[k]))) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+/*
+ * State of a name completion: the matches found so far (see cli_complete)
+ */
+typedef struct s_cli_completion {
+    short count;                    /* Number of names that match */
+    short common;                   /* Length of the part all matches share */
+    short is_dir;                   /* The (first) match is a folder */
+    short is_command;               /* The (first) match is a built-in command (upper case) */
+    char first[MAX_PATH_LEN];       /* The first match, in its own case */
+} t_cli_completion;
+
+/*
+ * Take one candidate name into a completion, if it matches
+ *
+ * Inputs:
+ * comp = the completion so far
+ * name = the candidate name
+ * kind = 1 for a folder, 0 for a file, -1 for a built-in command
+ * prefix, prefix_len = what the user typed of the name
+ * list_channel = the channel to print matches on, or -1 to only count them
+ * column = pointer to the current print column (when printing)
+ * width = the width of the screen in characters (when printing)
+ */
+static void cli_complete_take(t_cli_completion * comp, const char * name, short kind,
+                              const char * prefix, short prefix_len,
+                              short list_channel, short * column, short width) {
+    short k;
+
+    if (!cli_starts_with(name, prefix, prefix_len)) {
+        return;
+    }
+
+    if (list_channel >= 0) {
+        // Print the match in a column 20 wide, folders with a '/'
+        char item[24];
+        if (*column + 20 > width) {
+            print(list_channel, "\n");
+            *column = 0;
+        }
+        snprintf(item, 22, (kind > 0) ? "%s/" : "%s", name);
+        print(list_channel, item);
+        for (k = strlen(item); k < 20; k++) {
+            sys_chan_write_b(list_channel, ' ');
+        }
+        *column += 20;
+        return;
+    }
+
+    if (comp->count == 0) {
+        strncpy(comp->first, name, MAX_PATH_LEN - 1);
+        comp->first[MAX_PATH_LEN - 1] = 0;
+        comp->common = strlen(comp->first);
+        comp->is_dir = (kind > 0);
+        comp->is_command = (kind < 0);
+    } else {
+        // Shorten the shared part to what this name also has
+        for (k = 0; k < comp->common; k++) {
+            if ((name[k] == 0) || (toupper(name[k]) != toupper(comp->first[k]))) {
+                break;
+            }
+        }
+        comp->common = k;
+    }
+    comp->count++;
+}
+
+/*
+ * Go through every candidate for a completion: the files and folders in the folder, and for the
+ * first word on the line also the built-in commands
+ *
+ * Inputs:
+ * comp = the completion to fill (or 0 when printing)
+ * folder = the folder to look in ("" = the current one)
+ * prefix, prefix_len = what the user typed of the name
+ * commands_too = 1 to include the built-in commands
+ * list_channel = the channel to print matches on, or -1 to only count them
+ */
+static void cli_complete_scan(t_cli_completion * comp, const char * folder,
+                              const char * prefix, short prefix_len, short commands_too,
+                              short list_channel) {
+    t_file_info info;
+    t_rect region;
+    short column = 0, width = 80;
+    short dir;
+    p_cli_command command;
+
+    if (list_channel >= 0) {
+        sys_txt_get_region(sys_chan_device(list_channel), &region);
+        if (region.size.width > 20) {
+            width = region.size.width;
+        }
+        print(list_channel, "\n");
+    }
+
+    if (commands_too) {
+        for (command = (p_cli_command)g_cli_commands; command->name != 0; command++) {
+            if (command->name[0] != '?') {
+                cli_complete_take(comp, command->name, -1, prefix, prefix_len, list_channel, &column, width);
+            }
+        }
+    }
+
+    dir = sys_fsys_opendir(folder);
+    if (dir >= 0) {
+        while ((sys_fsys_readdir(dir, &info) == 0) && (info.name[0] != 0)) {
+            if ((info.attributes & FSYS_AM_HID) == 0) {
+                cli_complete_take(comp, info.name, (info.attributes & FSYS_AM_DIR) ? 1 : 0,
+                                  prefix, prefix_len, list_channel, &column, width);
+            }
+        }
+        sys_fsys_closedir(dir);
+    }
+
+    if (list_channel >= 0) {
+        print(list_channel, "\n");
+    }
+}
+
+/*
+ * Complete the name before the cursor (the Tab key)
+ *
+ * 2.0.34, as in many Unix shells. The word before the cursor is split into a folder and the start
+ * of a name ("/sd/gam" = folder "/sd", start "gam"). With one match the name is completed, with a
+ * '/' after a folder and a space after anything else. With several matches the part they all
+ * share is filled in; when there is nothing to fill in, they are listed under the line and the
+ * line is shown again. For the first word on the line the built-in commands count too.
+ *
+ * Inputs:
+ * channel = the console channel the line is shown on
+ * command_line = the line being edited
+ * i = the cursor position
+ *
+ * Returns:
+ * the new cursor position
+ */
+static short cli_complete(short channel, char * command_line, short i) {
+    t_cli_completion comp;
+    char folder[MAX_COMMAND_SIZE];
+    char buffer[16];
+    short start, prefix_len, k;
+    const char * prefix;
+    char * slash;
+    short commands;
+    short lower;
+
+    // Only at the end of a word
+    if ((command_line[i] != 0) && (command_line[i] != ' ')) {
+        return i;
+    }
+
+    // The word before the cursor
+    for (start = i; (start > 0) && (command_line[start - 1] != ' '); start--) ;
+
+    // Split it into the folder and the start of the name
+    memcpy(folder, command_line + start, i - start);
+    folder[i - start] = 0;
+    slash = strrchr(folder, '/');
+    if (slash != 0) {
+        prefix = command_line + start + (slash - folder) + 1;
+        if (slash == folder) {
+            slash[1] = 0;                       // "/name": the root folder "/"
+        } else {
+            *slash = 0;
+        }
+    } else {
+        prefix = command_line + start;
+        folder[0] = 0;                          // The current folder
+    }
+    prefix_len = (command_line + i) - prefix;
+
+    // Commands only for the first word without a folder
+    commands = ((start == 0) && (slash == 0)) ? 1 : 0;
+
+    comp.count = 0;
+    comp.common = 0;
+    comp.is_dir = 0;
+    comp.is_command = 0;
+    cli_complete_scan(&comp, folder, prefix, prefix_len, commands, -1);
+
+    if (comp.count == 0) {
+        return i;                               // Nothing matches
+    }
+
+    if (comp.common > prefix_len) {
+        // Fill in what all matches share. Commands are in upper case: follow the user's case.
+        lower = comp.is_command && (prefix_len > 0) && islower(prefix[0]);
+        for (k = prefix_len; k < comp.common; k++) {
+            char c = comp.first[k];
+            if (lower && isupper(c)) {
+                c = tolower(c);
+            }
+            i = cli_insert_char(channel, command_line, i, c);
+        }
+    }
+
+    if (comp.count == 1) {
+        // Complete: a folder gets its '/', anything else a space (unless one is there already)
+        if (comp.is_dir) {
+            i = cli_insert_char(channel, command_line, i, '/');
+        } else if (command_line[i] != ' ') {
+            i = cli_insert_char(channel, command_line, i, ' ');
+        }
+
+    } else if (comp.common <= prefix_len) {
+        // Several matches and nothing to fill in: show them, then the line again
+        cli_complete_scan(0, folder, prefix, prefix_len, commands, channel);
+        print(channel, "\x10 ");
+        print(channel, command_line);
+        sprintf(buffer, "\x1b[%dG", (short)(3 + i));
+        print(channel, buffer);
+    }
+
+    return i;
+}
+
 /**
  * Read a line of input from the channel, allowing for editing of the line
  *
@@ -889,6 +1162,10 @@ short cli_readline(short channel, char * command_line) {
                     i = 0;
                     print(channel, "\x1b[3G\x1b[K");
 
+                } else if (c == CHAR_TAB) {
+                    // 2.0.34: complete the file or command name before the cursor
+                    i = cli_complete(channel, command_line, i);
+
                 } else if (c == CHAR_BS) {
                     // Backspace
                     if (i > 0) {
@@ -902,23 +1179,8 @@ short cli_readline(short channel, char * command_line) {
                 }
 
             } else {
-                // Add key to command line.
-                // 2.0.34: inserted at the cursor. It used to overwrite what was there, so going back
-                // with the arrow keys to correct something wiped out the rest of the line; and it
-                // did not stop at the end of the buffer.
-                short len = strlen(command_line);
-                if (len < MAX_COMMAND_SIZE - 1) {
-                    if (i < len) {
-                        // Make room: move the rest of the line one place right, here and on screen
-                        for (j = len; j > i; j--) {
-                            command_line[j] = command_line[j - 1];
-                        }
-                        command_line[len + 1] = 0;
-                        print(channel, "\x1b[1@");
-                    }
-                    command_line[i++] = c;
-                    sys_chan_write_b(channel, c);
-                }
+                // Add key to command line (2.0.34: inserted at the cursor, see cli_insert_char)
+                i = cli_insert_char(channel, command_line, i, c);
             }
 
         } else {
