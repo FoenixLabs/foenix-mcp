@@ -27,6 +27,7 @@
 #include "cli/settings.h"
 #include "cli/sound_cmds.h"
 #include "cli/test_cmds.h"
+#include "dev/channel.h"
 #include "dev/console.h"
 #include "dev/ps2.h"
 #include "dev/rtc.h"
@@ -142,11 +143,12 @@ const t_cli_command g_cli_commands[] = {
     { "COPY", "COPY <src path> <dst path> : Copies files to destination", cmd_copy },
     { "CREDITS", "CREDITS : Print out the credits", cmd_credits },
     { "DASM", "DASM <addr> [<count>] : print a memory disassembly", mem_cmd_dasm },
-    { "DEL", "DEL <path> : delete a file or directory", cmd_del },
+    { "DEL", "DEL <path> : delete a file or directory (* and ? allowed in the name: files only)", cmd_del },
     { "DIR", "DIR <path> : print directory listing", cmd_dir },
     { "DISKFILL", "DISKFILL <drive #> <sector #> <byte value>", cmd_diskfill },
     { "DISKREAD", "DISKREAD <drive #> <sector #>", cmd_diskread },
     { "DUMP", "DUMP <addr> [<count>] : print a memory dump", mem_cmd_dump},
+    { "ECHO", "ECHO <text> : print the text (e.g. a message from mcp.init)", cmd_echo },
     { "FPU", "FPU [TEST] : the Floating Math Block at $FEC04000 (K25 FPGA build 1109+)", cmd_fpu },
     { "GETJIFFIES", "GETJIFFIES : print the number of jiffies since bootup", cmd_getjiffies },
     { "GETTICKS", "GETTICKS : print number of ticks since reset", cmd_get_ticks },
@@ -248,12 +250,139 @@ short cli_txt_screen_get() {
 //
 // List all the commands
 //
+/*
+ * The pager (2.0.34): commands with long output (HELP, DIR, TYPE) stop after a screenful and
+ * wait for a key, so nothing scrolls away unread. Any key shows the next screenful, q or Esc
+ * stops the output.
+ */
+static short pager_channel = 0;    /* Where the output goes */
+static short pager_lines = 0;      /* Lines shown since the last pause */
+static short pager_column = 0;     /* Column of the next character on the line */
+static short pager_height = 0;     /* Lines that fit in the command window */
+static short pager_width = 80;     /* Characters that fit on a line */
+static short pager_stopped = 0;    /* 1 after q or Esc: the rest is not shown */
+
+/*
+ * Start paged output on a channel
+ *
+ * Inputs:
+ * channel = the console channel to print on
+ */
+void cli_pager_start(short channel) {
+    t_rect region;
+
+    pager_channel = channel;
+    pager_lines = 0;
+    pager_column = 0;
+    pager_stopped = 0;
+    pager_height = 0;
+    pager_width = 80;
+
+    sys_txt_get_region(sys_chan_device(channel), &region);
+    if (region.size.height > 2) {
+        pager_height = region.size.height;
+    }
+    if (region.size.width > 0) {
+        pager_width = region.size.width;
+    }
+}
+
+/*
+ * Pause: show a prompt, wait for a key, take the prompt away again
+ *
+ * Returns:
+ * 1 if the user wants to stop (q or Esc), 0 to go on
+ */
+static short cli_pager_pause() {
+    char c;
+
+    print(pager_channel, "\x1b[7m-- more: any key, q stops --\x1b[0m");
+    c = sys_chan_read_b(pager_channel);
+    while (sys_chan_status(pager_channel) & CDEV_STAT_READABLE) {
+        sys_chan_read_b(pager_channel);         // The rest of an arrow key's ESC sequence
+    }
+    print(pager_channel, "\x1b[1G\x1b[K");    // Remove the prompt from its line
+
+    pager_lines = 0;
+    if ((c == 'q') || (c == 'Q') || (c == CHAR_ESC)) {
+        pager_stopped = 1;
+    }
+    return pager_stopped;
+}
+
+/*
+ * Print text, pausing when the screen is full
+ *
+ * Long lines count as the screen lines they take up. Call cli_pager_start() first.
+ *
+ * Inputs:
+ * text = the characters to print
+ * len = how many
+ *
+ * Returns:
+ * 1 if the user stopped the output (print nothing more), 0 to go on
+ */
+short cli_pager_write(const char * text, short len) {
+    short start = 0, k;
+    short new_line;
+
+    if (pager_stopped) {
+        return 1;
+    }
+
+    for (k = 0; k < len; k++) {
+        new_line = 0;
+        if (text[k] == '\n') {
+            new_line = 1;
+        } else if (text[k] == '\r') {
+            pager_column = 0;
+        } else if (text[k] != 0) {
+            if (++pager_column >= pager_width) {
+                new_line = 1;                   // The console wraps here
+            }
+        }
+
+        if (new_line) {
+            pager_column = 0;
+            if ((pager_height > 0) && (++pager_lines >= pager_height - 1)) {
+                // Print up to here, then wait
+                sys_chan_write(pager_channel, (unsigned char *)(text + start), k + 1 - start);
+                start = k + 1;
+                if (cli_pager_pause()) {
+                    return 1;
+                }
+            }
+        }
+    }
+
+    if (k > start) {
+        sys_chan_write(pager_channel, (unsigned char *)(text + start), k - start);
+    }
+    return 0;
+}
+
+/*
+ * Print a string with the pager (see cli_pager_write)
+ *
+ * Inputs:
+ * text = the string
+ *
+ * Returns:
+ * 1 if the user stopped the output, 0 to go on
+ */
+short cli_pager_print(const char * text) {
+    return cli_pager_write(text, strlen(text));
+}
+
 short cmd_help(short channel, int argc, const char * argv[]) {
     p_cli_command command;
 
+    // 2.0.34: paged, and the newline without the string's final 0 (it wrote 2 bytes)
+    cli_pager_start(channel);
     for (command = (p_cli_command)g_cli_commands; (command != 0) && (command->name != 0); command++) {
-        sys_chan_write(channel, command->help, strlen(command->help));
-        sys_chan_write(channel, "\n", 2);
+        if (cli_pager_print(command->help) || cli_pager_print("\n")) {
+            break;
+        }
     }
     return 0;
 }

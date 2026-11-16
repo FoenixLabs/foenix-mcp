@@ -48,6 +48,16 @@ extern short cli_init();
 extern void cli_ensure_console(short channel);
 
 /**
+ * Paged output (2.0.34): stop after a screenful and wait for a key; q or Esc stops
+ *
+ * cli_pager_start(channel) first, then cli_pager_print / cli_pager_write, which return 1 when
+ * the user stopped the output (print nothing more) and 0 to go on.
+ */
+extern void cli_pager_start(short channel);
+extern short cli_pager_write(const char * text, short len);
+extern short cli_pager_print(const char * text);
+
+/**
  * Set up the console and screen(s) for the CLI (2.0.33: the boot code calls it before mcp.init)
  *
  * @param channel the channel to use for interactions

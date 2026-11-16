@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "constants.h"
 #include "syscalls.h"
 #include "log.h"
 #include "simpleio.h"
@@ -136,20 +137,115 @@ short cmd_mkdir(short screen, int argc, const char * argv[]) {
 /*
  * Delete a file
  */
+/*
+ * Delete the files that match a pattern (2.0.34, DEL with * or ? in the name)
+ *
+ * Only files: a folder that matches is left alone, so "DEL *" cannot take folders with it.
+ * Each deleted file is listed.
+ *
+ * Inputs:
+ * screen = the channel to report on
+ * path = the path with the pattern, e.g. "/sd/tmp/*.bak" or "*.o"
+ *
+ * Returns:
+ * 0 on success, a negative number on error
+ */
+static short del_pattern(short screen, const char * path) {
+    char folder[MAX_PATH_LEN];
+    char file_path[MAX_PATH_LEN];
+    char message[MAX_PATH_LEN + 32];
+    const char * pattern;
+    const char * slash = strrchr(path, '/');
+    t_file_info file;
+    short dir, result = 0, count = 0;
+
+    // Split into the folder (with its final '/', or "" for the current one) and the pattern
+    if (slash != 0) {
+        short len = (short)(slash - path) + 1;
+        if (len >= MAX_PATH_LEN) {
+            return ERR_BAD_ARGUMENT;
+        }
+        memcpy(folder, path, len);
+        folder[len] = 0;
+        pattern = slash + 1;
+    } else {
+        folder[0] = 0;
+        pattern = path;
+    }
+
+    dir = sys_fsys_findfirst(folder, pattern, &file);
+    if (dir < 0) {
+        return dir;
+    }
+
+    while (file.name[0] != 0) {
+        if ((file.attributes & FSYS_AM_DIR) == 0) {
+            snprintf(file_path, MAX_PATH_LEN, "%s%s", folder, file.name);
+            result = fsys_delete(file_path);
+            if (result < 0) {
+                break;
+            }
+            snprintf(message, sizeof(message), "Deleted %s\n", file_path);
+            print(screen, message);
+            count++;
+        }
+        if (sys_fsys_findnext(dir, &file) < 0) {
+            break;
+        }
+    }
+    sys_fsys_closedir(dir);
+
+    if (result < 0) {
+        return result;
+    }
+    if (count == 0) {
+        print(screen, "No files match.\n");
+    }
+    return 0;
+}
+
 short cmd_del(short screen, int argc, const char * argv[]) {
+    short result;
 
     TRACE("cmd_del");
 
     if (argc > 1) {
-        short result = fsys_delete(argv[1]);
+        const char * name = strrchr(argv[1], '/');
+        name = (name != 0) ? name + 1 : argv[1];
+        if (strchr(name, '*') || strchr(name, '?')) {
+            // 2.0.34: a pattern deletes every matching file
+            result = del_pattern(screen, argv[1]);
+        } else {
+            result = fsys_delete(argv[1]);
+        }
         if (result < 0) {
             err_print(screen, "Unable to delete file", result);
             return result;
         }
+        return 0;           // 2.0.34: it fell off its end here without a return value
+
     } else {
         print(screen, "USAGE: DEL <path>\n");
         return -1;
     }
+}
+
+/*
+ * ECHO <text> (2.0.34): print the text, for messages from mcp.init
+ *
+ * The words are printed with one space between them (the command line splits on spaces).
+ */
+short cmd_echo(short screen, int argc, const char * argv[]) {
+    short i;
+
+    for (i = 1; i < argc; i++) {
+        if (i > 1) {
+            print(screen, " ");
+        }
+        print(screen, argv[i]);
+    }
+    print(screen, "\n");
+    return 0;
 }
 
 /*
@@ -378,30 +474,48 @@ short cmd_dir(short screen, int argc, const char * argv[]) {
 
         fsys_closedir(dir);
 
+        // 2.0.34: paged (a long listing stops after a screenful); after q the rest is only freed
+        cli_pager_start(screen);
+
         // Print the directories
         entry = directories;
         while (entry != 0) {
             sprintf(buffer, "%s/\n", entry->info.name);
-            print(screen, buffer);
+            cli_pager_print(buffer);
             prev = entry;
             entry = entry->next;
             free(prev);
         }
 
         // Print the files
+        // 2.0.34: the size checks used my_file (the last entry read) instead of the file itself,
+        // so a file of 1 MB or more could show as thousands of KB; and the MB line was wider
         entry = files;
         while (entry != 0) {
             if (entry->info.size < 1024) {
                 sprintf(buffer, "%-20.20s %d B\n", entry->info.name, (int)entry->info.size);
-            } else if (my_file.size < 1024*1024) {
-                sprintf(buffer, "%-20.20s %d KB\n", entry->info.name, (int)entry->info.size / 1024);
+            } else if (entry->info.size < 1024*1024) {
+                sprintf(buffer, "%-20.20s %d KB\n", entry->info.name, (int)(entry->info.size / 1024));
             } else {
-                sprintf(buffer, "%-29.20s %d MB\n", entry->info.name, (int)entry->info.size / (1024*1024));
+                sprintf(buffer, "%-20.20s %d MB\n", entry->info.name, (int)(entry->info.size / (1024*1024)));
             }
-            print(screen, buffer);
+            cli_pager_print(buffer);
             prev = entry;
             entry = entry->next;
             free(prev);
+        }
+
+        // 2.0.34: the free space on the drive
+        {
+            unsigned long free_kb = 0;
+            if (fsys_getfree(path, &free_kb) == 0) {
+                if (free_kb < 10UL * 1024) {
+                    sprintf(buffer, "%lu KB free\n", free_kb);
+                } else {
+                    sprintf(buffer, "%lu MB free\n", free_kb / 1024);
+                }
+                cli_pager_print(buffer);
+            }
         }
 
     } else {
@@ -423,13 +537,14 @@ short cmd_type(short screen, int argc, const char * argv[]) {
         short fd = fsys_open(argv[1], FA_READ);
         if (fd >= 0) {
             log_num(LOG_INFO, "File open: ", fd);
+            cli_pager_start(screen);        // 2.0.34: paged
             while (1) {
                 short n = chan_read(fd, buffer, 128);
                 log_num(LOG_INFO, "cmd_type chan_read: ", n);
                 if (n > 0) {
-                    logmsg(LOG_INFO, "cmd_type chan_write: ");
-                    chan_write(screen, buffer, n);
-                    logmsg(LOG_INFO, "/cmd_type chan_write: ");
+                    if (cli_pager_write((const char *)buffer, n)) {
+                        break;              // q or Esc at the pause
+                    }
                 } else {
                     break;
                 }
@@ -443,7 +558,7 @@ short cmd_type(short screen, int argc, const char * argv[]) {
             return fd;
         }
     } else {
-        logmsg(LOG_ERROR, "Usage: TYPE <path>");
+        print(screen, "USAGE: TYPE <path>\n");     // 2.0.34: on the screen, not only in the log
         return -1;
     }
 }

@@ -563,6 +563,32 @@ short fsys_rename(const char * old_path, const char * new_path) {
 }
 
 /**
+ * Get the free space on the drive of a path (2.0.34, shown by DIR)
+ *
+ * Inputs:
+ * path = a path on the drive ("" = the current drive)
+ * kbytes = where to store the free space in KB
+ *
+ * Returns:
+ * 0 on success, negative number on failure.
+ */
+short fsys_getfree(const char * path, unsigned long * kbytes) {
+    FATFS * fs;
+    DWORD clusters;
+    FRESULT fres;
+
+    fsys_update_stat(path);
+    fres = f_getfree(path, &clusters, &fs);
+    if (fres != FR_OK) {
+        return fatfs_to_foenix(fres);
+    }
+
+    /* A cluster is csize sectors of 512 bytes: two sectors make a KB */
+    *kbytes = (unsigned long)clusters * fs->csize / 2;
+    return 0;
+}
+
+/**
  * Change the current working directory (and drive)
  *
  * Inputs:
