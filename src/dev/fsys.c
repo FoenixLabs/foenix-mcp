@@ -1371,23 +1371,62 @@ static bool loader_exists(const char * extension) {
     return false;
 }
 
+/*
+ * Find where the file name starts in a path: after the last '/'
+ *
+ * 2.0.34. The loader looked for the extension and searched for programs using the whole path, so
+ * a dot in a folder name ("/sd/SpaceCadet.1/pinball_k") was taken for the extension, and a program
+ * in another folder was never found. Everything that is about the file name now uses this.
+ *
+ * Inputs:
+ * path = a path such as "/sd/games/pinball.pgz", "../pinball" or "pinball"
+ *
+ * Returns:
+ * pointer to the file name inside path ("pinball.pgz", "pinball", "pinball")
+ */
+static const char * path_file_name(const char * path) {
+    const char * slash = strrchr(path, '/');
+    return (slash != 0) ? slash + 1 : path;
+}
+
+/*
+ * Get the extension of the file name in a path, in upper case
+ *
+ * 2.0.34: looks only at the file name (see path_file_name), and always ends the extension with a
+ * 0. An extension longer than MAX_EXT - 1 characters used to be copied without its 0 (and the
+ * function then fell off its end without a return value); now it gives "?", which no loader has,
+ * so the load fails with "bad extension".
+ *
+ * Inputs:
+ * path = the path to the file
+ * extension = where to put the extension (MAX_EXT characters, 0 included)
+ *
+ * Returns:
+ * true if the file name has an extension (a dot that is not its first character), false if not
+ */
 static bool get_app_ext(const char * path, char * extension) {
-    char * point = strrchr(path, '.');
+    const char * name = path_file_name(path);
+    const char * point = strrchr(name, '.');
+    int i;
+
     extension[0] = 0;
-    if (point != 0) {
-        point++;
-        for (int i = 0; i < MAX_EXT; i++) {
-            char c = *point++;
-            if (c) {
-                extension[i] = toupper(c);
-            } else {
-                extension[i] = 0;
-                return true;
-            }
-        }
-    } else {
+    if ((point == 0) || (point == name)) {
+        /* No dot, or only a leading one (".", "..", ".hidden"): no extension */
         return false;
     }
+
+    point++;
+    for (i = 0; (i < MAX_EXT - 1) && (point[i] != 0); i++) {
+        extension[i] = toupper(point[i]);
+    }
+    extension[i] = 0;
+
+    if (point[i] != 0) {
+        /* Too long for any loader */
+        extension[0] = '?';
+        extension[1] = 0;
+    }
+    return true;
 }
 
 static short fsys_load_ext(const char * path, const char * extension, long destination, long * start) {
@@ -1493,8 +1532,8 @@ short fsys_load(const char * path, long destination, long * start) {
 
     TRACE("fsys_load");
 
-    /* Clear out the extension */
-    for (i = 0; i <= MAX_EXT; i++) {
+    /* Clear out the extension (2.0.34: this wrote one byte past its end) */
+    for (i = 0; i < MAX_EXT; i++) {
         extension[i] = 0;
     }
 
@@ -1505,16 +1544,40 @@ short fsys_load(const char * path, long destination, long * start) {
         // dropped, so every load error showed up as "file is not executable")
         return fsys_load_ext(path, extension, destination, start);
     } else {
-        // extension not provided, search for a matching file.
-        strcpy(spath, path);
-        strcat(spath, ".*");
+        // Extension not provided: search for "<name>.*" with a loader for its extension.
+        // 2.0.34: in the folder the path names ("/sd/games/pinball", "../pinball", "./pinball"),
+        // not always in the current one with the whole path as the pattern; the FAT library
+        // understands "/sd", "..", "." and relative folders itself. The file found is then loaded
+        // from that folder too (before, the folder was dropped from its path).
+        const char * name = path_file_name(path);
+        short dir_len = (short)(name - path);         /* folder part, with its final '/' */
+        char pattern[MAX_PATH_LEN];
 
-        // TODO: Iterate through path, and replace "".
-        fr = f_findfirst(&dj, &fno, "", spath);       /* Start to search for executables */
+        if ((name[0] == 0) || (strlen(path) + 2 >= MAX_PATH_LEN)) {
+            /* No file name ("/sd/games/") or too long to add ".*" */
+            return ERR_NOT_FOUND;
+        }
+
+        /* The folder to search: "" = the current one; "/" stays "/"; else without the final '/' */
+        memcpy(spath, path, dir_len);
+        spath[dir_len] = 0;
+        if (dir_len > 1) {
+            spath[dir_len - 1] = 0;
+        }
+
+        strcpy(pattern, name);
+        strcat(pattern, ".*");
+
+        fr = f_findfirst(&dj, &fno, spath, pattern); /* Start to search for executables */
         while (fr == FR_OK && fno.fname[0]) {         /* Repeat while an item is found */
             get_app_ext(fno.fname, extension);
             if (loader_exists(extension)) {
-                strcpy(spath, fno.fname);
+                /* The folder part as given, then the name found */
+                if (dir_len + strlen(fno.fname) >= MAX_PATH_LEN) {
+                    break;
+                }
+                memcpy(spath, path, dir_len);
+                strcpy(spath + dir_len, fno.fname);
                 found_loader = 1;
                 break;
             }
@@ -1522,7 +1585,10 @@ short fsys_load(const char * path, long destination, long * start) {
         }
         f_closedir(&dj);
 
-        if (fr != FR_OK && fr != FR_NO_FILE) {
+        if ((fr == FR_NO_PATH) || (fr == FR_INVALID_NAME)) {
+            /* 2.0.34: the folder does not exist: that is "not found", not a disk error */
+            return ERR_NOT_FOUND;
+        } else if (fr != FR_OK && fr != FR_NO_FILE) {
             log_num(LOG_ERROR, "File system error: ", fr);
             return FSYS_ERR_DISK_ERR;
         }
