@@ -39,7 +39,8 @@
 #include "version.h"
 #include "cache.h"
 
-#define MAX_HISTORY_DEPTH   5   /* Maximum number of commands we'll record */
+#define MAX_HISTORY_DEPTH   50  /* Maximum number of commands we'll record (2.0.33: was 5, too few to
+                                   be useful; 50 x 128 bytes = 6.4 KB of the MCP's RAM) */
 #define MAX_COMMAND_SIZE    128 /* Maximum number of characters in a command line */
 #define MAX_ARGC            32  /* Maximum number of arguments to a command */
 
