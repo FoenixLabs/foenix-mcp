@@ -12,10 +12,14 @@
 #include "dev/txt_screen.h"
 
 #if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X
+#include "A2560K/vky_chan_a.h"
 #include "A2560K/vky_chan_b.h"
-/* 2.0.32: the title bar clock writes into row 0 of the console screen (screen 0 = VICKY channel B) */
+/* 2.0.32: the title bar clock writes into row 0 of the console screen (screen 0 = VICKY channel B).
+   2.1.0: and into row 0 of the second screen too (screen 1 = VICKY channel A): both have a top bar. */
 #define RTC_CLOCK_TEXT      VKY3_B_TEXT_MATRIX
 #define RTC_CLOCK_SCREEN    0
+#define RTC_CLOCK_TEXT2     VKY3_A_TEXT_MATRIX
+#define RTC_CLOCK_SCREEN2   1
 #endif
 #define RTC_CLOCK_LEN_24    9           /* " hh:mm:ss" */
 #define RTC_CLOCK_LEN_12    12          /* " hh:mm:ss AM" (also the area cleared when switching) */
@@ -26,6 +30,7 @@ static short rtc_clock_on = 0;              /* 2.0.32: 1 = show the time in the 
 static short rtc_clock_24h = 1;             /* 1 = 24-hour display, 0 = 12-hour with AM / PM (SET CLOCK 24 / 12) */
 static unsigned char rtc_clock_sec = 0xFF;  /* the seconds shown last (0xFF = draw at the next interrupt) */
 static short rtc_clock_width = 0;           /* visible width of row 0; the clock ends at its last column */
+static short rtc_clock_width2 = 0;          /* 2.1.0: the same for the second screen */
 
 void rtc_handle_int();                      /* below; rtc_clock_set puts it back on the RTC interrupt */
 
@@ -45,7 +50,10 @@ static void rtc_clock_draw() {
     unsigned char sec, min, hour_reg;
     short hour;                         /* 0-23 */
     short shown;                        /* the hour as shown: 0-23, or 1-12 */
-    volatile unsigned char * p;
+    char text[RTC_CLOCK_LEN_12];        /* the time as shown */
+    char * p = text;
+    short len;
+    short i;
 
     sec = *RTC_SEC;
     if (sec == rtc_clock_sec) {
@@ -66,13 +74,13 @@ static void rtc_clock_draw() {
 
     if (rtc_clock_24h) {
         shown = hour;
-        p = RTC_CLOCK_TEXT + rtc_clock_width - RTC_CLOCK_LEN_24;
+        len = RTC_CLOCK_LEN_24;
     } else {
         shown = hour % 12;
         if (shown == 0) {
             shown = 12;
         }
-        p = RTC_CLOCK_TEXT + rtc_clock_width - RTC_CLOCK_LEN_12;
+        len = RTC_CLOCK_LEN_12;
     }
 
     *p++ = ' ';
@@ -89,6 +97,20 @@ static void rtc_clock_draw() {
         *p++ = (hour >= 12) ? 'P' : 'A';
         *p   = 'M';
     }
+
+    /* 2.1.0: the same time on both screens, each at the end of its own row 0 */
+    if (rtc_clock_width >= len) {
+        for (i = 0; i < len; i++) {
+            RTC_CLOCK_TEXT[rtc_clock_width - len + i] = text[i];
+        }
+    }
+#ifdef RTC_CLOCK_TEXT2
+    if (rtc_clock_width2 >= len) {
+        for (i = 0; i < len; i++) {
+            RTC_CLOCK_TEXT2[rtc_clock_width2 - len + i] = text[i];
+        }
+    }
+#endif
 #endif
 }
 
@@ -104,6 +126,13 @@ static void rtc_clock_clear() {
             RTC_CLOCK_TEXT[i] = ' ';
         }
     }
+#ifdef RTC_CLOCK_TEXT2
+    if (rtc_clock_width2 >= RTC_CLOCK_LEN_12) {
+        for (i = rtc_clock_width2 - RTC_CLOCK_LEN_12; i < rtc_clock_width2; i++) {
+            RTC_CLOCK_TEXT2[i] = ' ';
+        }
+    }
+#endif
 #endif
 }
 
@@ -120,6 +149,11 @@ void rtc_clock_set(short on) {
         /* The clock ends at the last visible column; the screen width can differ per mode */
         txt_get_sizes(RTC_CLOCK_SCREEN, &text_size, 0);
         rtc_clock_width = text_size.width;
+#ifdef RTC_CLOCK_TEXT2
+        text_size.width = 0;
+        txt_get_sizes(RTC_CLOCK_SCREEN2, &text_size, 0);
+        rtc_clock_width2 = text_size.width;
+#endif
         rtc_clock_sec = 0xFF;           /* draw at the next interrupt */
         rtc_clock_on = 1;
 

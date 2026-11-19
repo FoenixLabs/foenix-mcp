@@ -898,6 +898,17 @@ void sys_txt_get_sizes(short screen, p_extent text_size, p_extent pixel_size) {
 }
 
 /**
+ * 2.1.0: put a program's text in the USER part (the middle) of a screen's top bar.
+ *
+ * @param screen the screen number
+ * @param text the text; 0 or "" clears the USER part
+ * @return how many characters fit in the USER part, or a negative number for a bad screen
+ */
+short sys_txt_topbar(short screen, const char * text) {
+    return (short)syscall(KFN_TXT_TOPBAR, screen, text);
+}
+
+/**
  * Set the size of the border of the screen (if supported)
  *
  * @param screen the number of the text device

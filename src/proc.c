@@ -16,6 +16,9 @@
 #include "dev/fsys.h"
 #include "sys_general.h"
 #include "asmcall.h"
+#include <string.h>
+#include "dev/channel.h"
+#include "topbar.h"
 
 static const long k_default_stack = 0x00010000;     /* For now... we're just going to put the user stack under 0x00010000 */
 static int g_proc_result;
@@ -104,6 +107,33 @@ int proc_get_result() {
  * return on success). The program's own exit code is not returned here: a program ending with, say,
  * -1 is not a failure to run it. Read that code with proc_get_result.
  */
+/**
+ * Make the full path of a program for the top bar: a path without a folder or drive in front is
+ * relative to the current folder.
+ *
+ * @param path the path the program was started with
+ * @param full the result, TOPBAR_PATH_MAX characters
+ */
+static void proc_full_path(const char * path, char * full) {
+    short len;
+
+    if ((path[0] == '/') || (strchr(path, ':') != 0)) {
+        strncpy(full, path, TOPBAR_PATH_MAX - 1);
+        full[TOPBAR_PATH_MAX - 1] = 0;
+        return;
+    }
+
+    full[0] = 0;
+    fsys_get_cwd(full, TOPBAR_PATH_MAX);
+    full[TOPBAR_PATH_MAX - 1] = 0;
+    len = (short)strlen(full);
+    if ((len > 0) && (full[len - 1] != '/') && (len < TOPBAR_PATH_MAX - 1)) {
+        full[len++] = '/';
+        full[len] = 0;
+    }
+    strncat(full, path, TOPBAR_PATH_MAX - 1 - len);
+}
+
 short proc_run(const char * path, int argc, char * argv[]) {
 
     TRACE1("proc_run(\"%s\")", path);
@@ -116,7 +146,21 @@ short proc_run(const char * path, int argc, char * argv[]) {
     short result = fsys_load(path, 0, &start);
     if (result == 0) {
         if (start != 0) {
+            /* 2.1.0: while the program runs, the top bar of the console screen shows its path.
+               Afterwards the bar shows what it showed before (the folder, or the program that
+               started this one) and the program's own text in the USER part is cleared. */
+            short screen = chan_device(0);
+            char before[TOPBAR_PATH_MAX];
+            char full[TOPBAR_PATH_MAX];
+
+            topbar_get_app(screen, before);
+            proc_full_path(path, full);
+            topbar_set_app(screen, full, 1);
+
             proc_exec(start, k_default_stack, argc, argv);
+
+            topbar_set_user(screen, 0);
+            topbar_set_app(screen, before, 0);
             return 0;
         } else {
             ERROR1("Couldn't execute file: %d", result);
