@@ -15,6 +15,7 @@
 #include "log.h"
 #include "dev/fsys.h"
 #include "sys_general.h"
+#include "asmcall.h"
 
 static const long k_default_stack = 0x00010000;     /* For now... we're just going to put the user stack under 0x00010000 */
 static int g_proc_result;
@@ -22,9 +23,9 @@ static int g_proc_result;
 /*
  * Assembly routine: reset the supervisor stack pointer and restart the CLI
  */
-extern void restart_cli();
+extern ASMCALL void restart_cli();
 
-extern void call_user(long start, long stack, int argc, char * argv[]);
+extern ASMCALL void call_user(long start, long stack, int argc, char * argv[]);
 
 #if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X
 /*
@@ -37,7 +38,7 @@ void * proc_return_point = 0;
 /*
  * Assembly routine: go back to the newest return point; call_user then returns to its caller
  */
-extern void proc_return(int result);
+extern ASMCALL void proc_return(int result);
 #define PROC_CAN_RETURN 1
 #else
 #define PROC_CAN_RETURN 0           /* the 68000 start-up code has no return points (yet) */

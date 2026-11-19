@@ -13,6 +13,7 @@
 #include "types.h"
 #include "interrupt.h"
 #include "sys_general.h"
+#include "asmcall.h"
 #include "dev/channel.h"
 #include "dev/block.h"
 #include "dev/fsys.h"
@@ -136,7 +137,7 @@
 /*
  * Call into the kernel (provided by assembly)
  */
-extern int32_t syscall(int32_t function, ...);
+extern ASMCALL int32_t syscall(int32_t function, ...);
 
 /***
  *** Core system calls

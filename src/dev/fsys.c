@@ -194,7 +194,7 @@ short fsys_open(const char * path, short mode) {
  */
 short fsys_close(short c) {
     p_channel chan = 0;
-    short fd = 0;
+    long fd = 0;                        /* long index: Calypsi 5.18 miscompiles a short index into this table (tools/calypsi_check.py) */
 
     chan = chan_get_record(c);          /* Get the channel record */
     fd = chan->data[0];                 /* Get the file descriptor number */
@@ -223,7 +223,7 @@ short fsys_close(short c) {
  */
 short fsys_opendir(const char * path) {
     short i;
-    short dir = -1;
+    long dir = -1;                      /* long index: Calypsi 5.18 miscompiles a short index into this table (tools/calypsi_check.py) */
     FRESULT fres;
 
 	// Make sure our status is updated for the drive indicated by the path
@@ -255,7 +255,7 @@ short fsys_opendir(const char * path) {
         } else {
             /* Otherwise, allocate and return the handle */
             g_dir_state[dir] = 1;
-            return dir;
+            return (short)dir;
         }
     }
 }
@@ -270,10 +270,12 @@ short fsys_opendir(const char * path) {
  * 0 on success, negative number on error
  */
 short fsys_closedir(short dir) {
-    if (g_dir_state[dir]) {
+    long d = dir;                       /* long index: Calypsi 5.18 miscompiles a short index into this table (tools/calypsi_check.py) */
+
+    if (g_dir_state[d]) {
         /* Close and deallocate the handle */
-        f_closedir(&g_directory[dir]);
-        g_dir_state[dir] = 0;
+        f_closedir(&g_directory[d]);
+        g_dir_state[d] = 0;
     }
 
     return 0;
@@ -291,9 +293,10 @@ short fsys_closedir(short dir) {
  */
 short fsys_readdir(short dir, p_file_info file) {
     FILINFO finfo;
+    long d = dir;                       /* long index: Calypsi 5.18 miscompiles a short index into this table (tools/calypsi_check.py) */
 
-    if (g_dir_state[dir]) {
-        FRESULT fres = f_readdir(&g_directory[dir], &finfo);
+    if (g_dir_state[d]) {
+        FRESULT fres = f_readdir(&g_directory[d], &finfo);
         if (fres != FR_OK) {
             return fatfs_to_foenix(fres);
         } else {
@@ -456,9 +459,10 @@ short fsys_findfirst(const char * path, const char * pattern, p_file_info file) 
 short fsys_findnext(short dir, p_file_info file) {
     FILINFO finfo;
     FRESULT fres;
+    long d = dir;                       /* long index: Calypsi 5.18 miscompiles a short index into this table (tools/calypsi_check.py) */
 
-    if (g_dir_state[dir]) {
-        fres = f_findnext(&g_directory[dir], &finfo);
+    if (g_dir_state[d]) {
+        fres = f_findnext(&g_directory[d], &finfo);
         if (fres != FR_OK) {
             return fatfs_to_foenix(fres);
 

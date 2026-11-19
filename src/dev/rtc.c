@@ -255,8 +255,8 @@ void rtc_set_time(p_time time) {
     unsigned char ctrl;
     unsigned char century_bcd, year_bcd, month_bcd, day_bcd;
     unsigned char hour_bcd, minute_bcd, second_bcd;
-    unsigned short century;
-    unsigned short year;
+    unsigned long century;              /* long: Calypsi 5.18 miscompiles a short times 100 */
+    unsigned long year;                 /* (it multiplies century in place, tools/calypsi_check.py) */
 
     century = time->year / 100;
     year = time->year - (century * 100);
@@ -389,7 +389,7 @@ void rtc_get_time(p_time time) {
 
     /* Fill out the time record */
 
-    time->year = bcd_to_i(century_bcd) * 100 + bcd_to_i(year_bcd);
+    time->year = (unsigned short)((unsigned long)bcd_to_i(century_bcd) * 100 + bcd_to_i(year_bcd));
     time->month = bcd_to_i(month_bcd);
     time->day = bcd_to_i(day_bcd);
     time->hour = bcd_to_i(hour_bcd & 0x7f);

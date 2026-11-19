@@ -3,6 +3,7 @@
  */
 
 #include "features.h"
+#include "asmcall.h"
 #if HAS_FLOPPY
 
 #include <stdio.h>
@@ -1017,7 +1018,7 @@ extern short fdc_cmd_asm(__reg("d1") short cmd,
                          __reg("a2") uint8_t * buffer,
                          __reg("d3") short resultc, __reg("a3") uint8_t * results);
 #else
-extern short fdc_cmd_asm(short cmd, short argc, uint8_t * argv, uint8_t * buffer,
+extern ASMCALL short fdc_cmd_asm(short cmd, short argc, uint8_t * argv, uint8_t * buffer,
                          short resultc, uint8_t * results);
 #endif
 

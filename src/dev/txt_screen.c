@@ -90,8 +90,9 @@ short txt_register(p_txt_device device) {
  * @return pointer to the device driver structure, 0 if invalid or not found
  */
 p_txt_device txt_get_device(short screen) {
+    long s = screen;                    /* long index: Calypsi 5.18 miscompiles a short index into this table (tools/calypsi_check.py) */
     if (screen < TXT_CNT_SCREENS) {
-        p_txt_device device = &(txt_device_driver[screen]);
+        p_txt_device device = &(txt_device_driver[s]);
         if (device->number == screen) {
             return device;
         } else {
