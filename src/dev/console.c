@@ -536,6 +536,41 @@ void rc_putc(char c) {
 }
 #endif
 
+#if MODEL == MODEL_FOENIX_A2560K
+/*
+ * 2.1.0: the keyboard the console read its last character from (0 = the built-in keyboard, 1 = PS/2)
+ */
+static short con_last_kbd = 0;
+
+/**
+ * Get a character from the keyboards of the A2560K, without waiting.
+ *
+ * 2.1.0. The A2560K has its built-in keyboard and a PS/2 port. Before, the console only read the
+ * built-in keyboard: the PS/2 driver filled its buffer (ps2_init sets it up at boot), but nobody
+ * read it, so a PS/2 keyboard did nothing. Now both are read, then the remote console on COM1.
+ *
+ * A key such as an arrow or a function key gives several characters (an ESC sequence), which the
+ * keyboard driver puts in its buffer all at once. The keyboard read last is asked first, so the
+ * rest of a sequence is read before the other keyboard gets a turn: the two never get mixed.
+ *
+ * @return the character, or 0 if no keyboard has one
+ */
+static char con_kbd_getc() {
+    char c;
+    short i;
+
+    for (i = 0; i < 2; i++) {
+        short kbd = con_last_kbd ^ i;   /* first the keyboard read last, then the other one */
+        c = (kbd == 0) ? kbdmo_getc() : kbd_getc();
+        if (c != 0) {
+            con_last_kbd = kbd;
+            return c;
+        }
+    }
+    return rc_getc();                   /* Gen1 remote console: COM1 */
+}
+#endif
+
 /*
  * Send a byte to the console screen
  */
@@ -580,10 +615,10 @@ short con_read_b(p_channel chan) {
 #ifdef KBD_POLLED
             ps2_mouse_get_packet();
             c = kbdmo_getc_poll();
-#else
-            c = kbdmo_getc();
-#endif
             if (c == 0) c = rc_getc();      /* Gen1 remote console: COM1 */
+#else
+            c = con_kbd_getc();             /* 2.1.0: built-in keyboard, PS/2, COM1 */
+#endif
 #else
  #ifdef KBD_POLLED
            c = kbd_getc_poll();
@@ -715,10 +750,10 @@ short con_has_input(p_channel chan) {
     #ifdef KBD_POLLED
                 ps2_mouse_get_packet();
                 c = kbdmo_getc_poll();
-    #else
-                c = kbdmo_getc();
-    #endif
                 if (c == 0) c = rc_getc();  /* Gen1 remote console: COM1 */
+    #else
+                c = con_kbd_getc();         /* 2.1.0: built-in keyboard, PS/2, COM1 */
+    #endif
     #else
     #ifdef KBD_POLLED  
               c = kbd_getc_poll();      
