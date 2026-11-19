@@ -1662,8 +1662,13 @@ short cli_repl(short channel) {
         print(g_current_channel, "\n");
         cli_process_line(g_current_channel, command_line);
 
-        print(g_current_channel, "\n");
+        /* 2.1.0: the next prompt on a new line only if the command did not end with one. Before,
+           a newline was always printed here, which left an empty line after almost every command
+           (they end their output with a newline) and after just pressing Enter. */
         sys_txt_get_xy(sys_chan_device(g_current_channel), &cursor);
+        if (cursor.x != 0) {
+            print(g_current_channel, "\n");
+        }
     }
 
     return 0;
