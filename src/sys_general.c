@@ -1,6 +1,7 @@
 #include "sys_general.h"
 #include "gabe_reg.h"
 #include "exp_reg.h"
+#include "interrupt.h"
 
 /*
  * Fill out a s_MODEL_info structure with the information about the current system
@@ -370,3 +371,27 @@ void genx_set_hdc_led(short colors)  {
     *GABE_GENX_STAT_LEDS = genx_leds;
 }
 #endif
+
+/**
+ * Restart the machine, as the reset button does (2.1.0: REBOOT and Ctrl+Alt+Del).
+ *
+ * GAVIN's soft reset: a long write of $DEADxxxx with bit 15 (MANUAL_RESET) set to its control
+ * register ($FEC0_0000) gives the same cold reset as the reset button (K25 hardware reference,
+ * resets). The "DEAD" in the upper half guards against a stray write. The other bits are written
+ * as they were (the power and SD LEDs), so nothing changes in the 10 ms before the reset.
+ * Interrupts are switched off first, so nothing else runs in between.
+ *
+ * Other models: not supported; it just returns.
+ */
+void sys_reboot(void) {
+#if MODEL == MODEL_FOENIX_A2560K
+    unsigned long ctrl = *GABE_CTRL_REG & 0x7FFF;
+
+    int_disable_all();
+    *GABE_CTRL_REG = 0xDEAD0000 | MANUAL_RESET | ctrl;
+    for (;;) {
+        ctrl = *GABE_CTRL_REG;          /* wait: the reset comes within about 10 ms (the read keeps
+                                           VBCC from calling this an empty, suspicious loop) */
+    }
+#endif
+}

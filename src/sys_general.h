@@ -110,4 +110,11 @@ extern void genx_set_sdc_led(short colors);
 extern void genx_set_hdc_led(short colors);
 #endif
 
+/**
+ * 2.1.0: restart the machine, as the reset button does (A2560K only; elsewhere it returns).
+ *
+ * Nothing is saved first: the caller must make sure no file is being written.
+ */
+extern void sys_reboot(void);
+
 #endif

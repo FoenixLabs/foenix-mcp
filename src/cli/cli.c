@@ -107,6 +107,7 @@ extern short cmd_cls(short channel, int argc, const char * argv[]);
 extern short cmd_showint(short channel, int argc, const char * argv[]);
 extern short cmd_getjiffies(short channel, int argc, const char * argv[]);
 extern short cmd_fpu(short channel, int argc, const char * argv[]);
+extern short cmd_reboot(short channel, int argc, const char * argv[]);
 extern short cmd_bootsel(short channel, int argc, const char * argv[]);
 extern short cmd_save(short channel, int argc, const char * argv[]);
 extern short cmd_get_ticks(short channel, int argc, const char * argv[]);
@@ -167,6 +168,7 @@ const t_cli_command g_cli_commands[] = {
     { "POKE16", "POKE16 <addr> <value> : write the 16-bit value to the address in memory", mem_cmd_poke16 },
     { "POKE32", "POKE32 <addr> <value> : write the 32-bit value to the address in memory", mem_cmd_poke32 },
     { "PWD", "PWD : prints the current directory", cmd_pwd },
+    { "REBOOT", "REBOOT : restart the machine, as the reset button does (also Ctrl+Alt+Del)", cmd_reboot },
     { "REN", "REN <old path> <new path> : rename a file or directory", cmd_rename },
     { "SAVE", "SAVE <path> <address> <length> : write memory to a file (e.g. data the debug port put in SDRAM)", cmd_save },
     { "SET", "SET <name> <value> : set the value of a setting (SET HELP lists them)", cli_cmd_set },
@@ -474,6 +476,23 @@ short cmd_fpu(short channel, int argc, const char * argv[]) {
 #define G1_BOOT_BASE    ((volatile unsigned long *)0xFEC00038)
 #define G1_BOOT_SIZE    ((volatile unsigned long *)0xFEC0003C)
 #define G1_FPGA_ID      ((volatile unsigned long *)0xFEC0000C)
+/**
+ * REBOOT: restart the machine, as the reset button does (2.1.0).
+ *
+ * At the command line no program has a file open, so nothing is lost. Ctrl+Alt+Del does the same
+ * from the keyboard drivers, also while a program runs.
+ *
+ * @param channel the channel for the message
+ * @param argc, argv not used
+ * @return only on a machine that cannot reboot this way: -1
+ */
+short cmd_reboot(short channel, int argc, const char * argv[]) {
+    print(channel, "Rebooting...\n");
+    sys_reboot();
+    print(channel, "REBOOT is not supported on this machine\n");
+    return -1;
+}
+
 short cmd_bootsel(short channel, int argc, const char * argv[]) {
     char buffer[160];
     static const char * names[4] = { "4M", "2M", "1M", "512K" };
