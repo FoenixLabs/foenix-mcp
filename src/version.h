@@ -6,8 +6,8 @@
 #define __VERSION_H
 
 #define VER_MAJOR 2
-#define VER_MINOR 0
-#define VER_BUILD 34
+#define VER_MINOR 1
+#define VER_BUILD 0
 
 /* 2.0.30: shown after the version number. "c" = this MCP switches the CPU caches on (built with
    make ... CACHE=1); the boot loader shows it too ("MCP 2.0.30c"). */

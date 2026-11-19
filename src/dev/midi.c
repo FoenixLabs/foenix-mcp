@@ -193,7 +193,7 @@ short midi_status(p_channel chan) {
     return status;
 }
 
-short midi_open(p_channel chan, const char * path, short mode) {
+short midi_open(p_channel chan, const uint8_t * path, short mode) {
     return midi_init();
 }
 

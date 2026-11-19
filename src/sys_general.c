@@ -264,9 +264,9 @@ localparam 		CPU_SPEED_ID 	= 4'b0010,	// 2 = 25Mhz
             info->cpu_name = "i486DX4";
             break;
 
-        case CPU_MC68LC060:
-            info->cpu_name = "MC68LC060";
-            break;
+        /* CPU_MC68LC060 has the same value as CPU_M68LC060 (above): a second case for it is an
+         * error (a duplicate case) for stricter compilers such as Calypsi
+         */
 
         case CPU_MC68EC060:
             info->cpu_name = "MC68EC060";

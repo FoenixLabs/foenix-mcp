@@ -633,6 +633,7 @@ short cli_test_fdc(short screen, int argc, const char * argv[]) {
     }
 
     bdev_ioctrl(BDEV_FDC, FDC_CTRL_MOTOR_OFF, 0, 0);
+    return 0;       // 2.1.0: success did not return anything
 }
 #endif
 
