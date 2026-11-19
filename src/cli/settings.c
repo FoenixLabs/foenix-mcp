@@ -191,6 +191,127 @@ short cli_get_value(short channel, const char * name, char * buffer, short size)
 }
 
 /*
+ * 2.1.0: programmable function keys
+ *
+ * F1 - F8 and Shift+F1 - Shift+F8 (written +F1 - +F8) can each hold a command line. Pressing the
+ * key on the command line runs it at once (see cli_readline in cli.c). The commands are set with
+ * SET F1 <command> and shown with GET F1 or GET FX (all keys). They are not normal settings: the
+ * command is the whole rest of the SET line, spaces included, while a normal setting takes one
+ * word. To keep them after a restart, put the SET lines in system/mcp.init.
+ *
+ * The A2560K keyboard has no F9 and F10, so only F1 - F8 are used.
+ */
+
+#define FKEY_COUNT      8       /* F1 - F8 */
+#define FKEY_MAX        128     /* longest command + 1: the size of a command line (cli.c) */
+
+/* The commands: [0..7] = F1 - F8, [8..15] = +F1 - +F8. An empty string = no command. */
+static char fkey_command[2 * FKEY_COUNT][FKEY_MAX];
+
+/**
+ * Find which function key a name means.
+ *
+ * @param name the name from the SET or GET line: F1 - F8 or +F1 - +F8 (upper or lower case)
+ * @return 0 - 7 for F1 - F8, 8 - 15 for +F1 - +F8, or -1 if the name is not a function key
+ */
+static short fkey_index(const char * name) {
+    short shifted = 0;
+
+    if (name[0] == '+') {
+        shifted = 1;
+        name++;
+    }
+
+    if (((name[0] == 'F') || (name[0] == 'f')) && (name[1] >= '1') && (name[1] <= '8') && (name[2] == 0)) {
+        return (short)(shifted * FKEY_COUNT + (name[1] - '1'));
+    }
+    return -1;
+}
+
+/**
+ * Write the name of a function key ("F1" or "+F1") into a buffer.
+ *
+ * @param index 0 - 15, as given by fkey_index
+ * @param name the buffer, at least 4 characters
+ */
+static void fkey_name(short index, char * name) {
+    sprintf(name, "%sF%d", (index >= FKEY_COUNT) ? "+" : "", (short)(index % FKEY_COUNT + 1));
+}
+
+/**
+ * SET F1 <command>: store a command for a function key.
+ *
+ * The command line was cut into words at the spaces before the SET command got it, so the words
+ * after the key name are put back together with one space between them.
+ *
+ * @param channel the channel for messages
+ * @param index the key, 0 - 15 (see fkey_index)
+ * @param argc the number of words on the SET line
+ * @param argv the words: SET, the key name, then the command (no command = clear the key)
+ * @return 0 on success, -1 if the command is too long (the key is then cleared)
+ */
+static short fkey_set(short channel, short index, int argc, const char * argv[]) {
+    char * command = fkey_command[index];
+    short len = 0;
+    int a;
+
+    command[0] = 0;
+    for (a = 2; a < argc; a++) {
+        short n = (short)strlen(argv[a]);
+        short space = (a > 2) ? 1 : 0;
+
+        if (len + space + n >= FKEY_MAX) {
+            command[0] = 0;
+            print(channel, "Unable to change setting: the command is too long\n");
+            return -1;
+        }
+        if (space) {
+            command[len++] = ' ';
+        }
+        strcpy(command + len, argv[a]);
+        len += n;
+    }
+    return 0;
+}
+
+/**
+ * Print the command of one function key, as "F1   DIR" (GET FX) or just the command (GET F1).
+ *
+ * @param channel the channel to print on
+ * @param index the key, 0 - 15 (see fkey_index)
+ * @param with_name non-zero to put the key name in front
+ */
+static void fkey_print(short channel, short index, short with_name) {
+    char name[4];
+
+    if (with_name) {
+        char line[16];
+        fkey_name(index, name);
+        sprintf(line, "%-4s ", name);
+        print(channel, line);
+    }
+    print(channel, (fkey_command[index][0] != 0) ? fkey_command[index] : "(not set)");
+    print(channel, "\n");
+}
+
+/**
+ * The command of a function key, for the command line (cli_readline in cli.c).
+ *
+ * @param number the key number, 1 - 8 (other numbers have no command)
+ * @param shifted non-zero if Shift was held down
+ * @return the command, or 0 if the key has none
+ */
+const char * cli_fkey_command(short number, short shifted) {
+    const char * command;
+
+    if ((number < 1) || (number > FKEY_COUNT)) {
+        return 0;
+    }
+    command = fkey_command[(shifted ? FKEY_COUNT : 0) + number - 1];
+    return (command[0] != 0) ? command : 0;
+}
+
+/*
  * Print help information about the SET command
  */
 void cli_set_help(short channel) {
@@ -204,6 +325,7 @@ void cli_set_help(short channel) {
         sys_chan_write(channel, setting->help, strlen(setting->help));
         sys_chan_write(channel, "\n", 1);
     }
+    print(channel, "F1-F8|+F1-+F8 <command> -- run <command> with a function key (+ = Shift; GET FX lists them)\n");
 
 #if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_A2560X || MODEL == MODEL_FOENIX_GENX
     color_help(channel);
@@ -217,7 +339,11 @@ short cli_cmd_set(short channel, int argc, const char * argv[]) {
     char message[160];
     short result;
 
-    if (argc == 3) {
+    if ((argc >= 2) && (fkey_index(argv[1]) >= 0)) {
+        /* 2.1.0: a function key takes the whole rest of the line, not one word */
+        return fkey_set(channel, fkey_index(argv[1]), argc, argv);
+
+    } else if (argc == 3) {
         result = cli_set_value(channel, argv[1], argv[2]);
         if (result != 0) {
             sprintf(message, "Unable to change setting: %s\n", sys_err_message(result));
@@ -247,6 +373,17 @@ short cli_cmd_get(short channel, int argc, const char * argv[]) {
 
         if ((strcmp(argv[1], "HELP") == 0) || (strcmp(argv[1], "help") == 0) || (strcmp(argv[1], "?") == 0)) {
             cli_set_help(channel);
+
+        } else if (strcicmp(argv[1], "FX") == 0) {
+            /* 2.1.0: GET FX lists the commands of all function keys */
+            short index;
+            for (index = 0; index < 2 * FKEY_COUNT; index++) {
+                fkey_print(channel, index, 1);
+            }
+
+        } else if (fkey_index(argv[1]) >= 0) {
+            /* 2.1.0: GET F1 shows the command of one function key */
+            fkey_print(channel, fkey_index(argv[1]), 0);
 
         } else {
             result = cli_get_value(channel, (char*)argv[1], buffer, 128);
