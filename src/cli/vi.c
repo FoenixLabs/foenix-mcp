@@ -616,8 +616,9 @@ static void vi_redraw(void) {
 /*
  * Wait for a key; the special keys come as ESC [ sequences and become VI_KEY_...
  *
- * The keyboard driver puts a whole sequence in the queue at once, so an ESC with nothing
- * after it is the Esc key itself.
+ * The keyboard driver puts a whole sequence in the queue at once. The built-in keyboard
+ * (kbd_mo.c) sends the Esc key as ESC ESC, so a sequence can't be taken for it; other
+ * keyboards send a lone ESC. Both become VI_KEY_ESC.
  *
  * Returns:
  * the character, or a VI_KEY_... code
@@ -632,7 +633,11 @@ static short vi_key(void) {
     if ((sys_chan_status(vi.channel) & CDEV_STAT_READABLE) == 0) {
         return VI_KEY_ESC;
     }
-    if ((sys_chan_read_b(vi.channel) & 0xff) != '[') {
+    c = sys_chan_read_b(vi.channel) & 0xff;
+    if (c == CHAR_ESC) {
+        return VI_KEY_ESC;              /* the keyboard driver doubles the Esc key itself */
+    }
+    if (c != '[') {
         return VI_KEY_NONE;             /* Alt + key: not used */
     }
 
