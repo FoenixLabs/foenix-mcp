@@ -1316,6 +1316,21 @@ short cli_readline(short channel, char * command_line) {
                 i = cli_insert_char(channel, command_line, i, c);
             }
 
+        } else if ((key_code & (CLI_FLAG_SPEC | CLI_FLAG_FUNC)) == CLI_FLAG_FUNC) {
+            /* 2.1.0: a function key runs the command SET F1 (SET +F1 with Shift) gave it, as if
+             * it had been typed and Enter pressed. The command replaces what was typed and is shown
+             * on the line, so the screen and the history say what ran. A key without a command
+             * does nothing. Only Shift counts: Ctrl or Alt with F1 works as F1. */
+            const char * command = cli_fkey_command((short)(key_code & 0x00FF),
+                                                    (short)((key_code & CLI_FLAG_SHIFT) != 0));
+            if (command != 0) {
+                strncpy(command_line, command, MAX_COMMAND_SIZE - 1);
+                command_line[MAX_COMMAND_SIZE - 1] = 0;
+                print(channel, "\x1b[3G\x1b[K");
+                print(channel, command_line);
+                return 0;
+            }
+
         } else {
             // Special editing key
             switch (key_code & 0xF0FF) {

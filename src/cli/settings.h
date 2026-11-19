@@ -58,6 +58,15 @@ extern short cli_set_value(short channel, const char * name, const char * value)
  */
 extern short cli_get_value(short channel, const char * name, char * buffer, short size);
 
+/**
+ * 2.1.0: the command of a function key (set with SET F1 <command> or SET +F1 <command>).
+ *
+ * @param number the key number, 1 - 8
+ * @param shifted non-zero if Shift was held down
+ * @return the command, or 0 if the key has none
+ */
+extern const char * cli_fkey_command(short number, short shifted);
+
 /*
  * Command to set the value of a setting
  */
