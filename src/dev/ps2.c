@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "errors.h"
+#include "sys_general.h"
 #include "log_level.h"
 #include "log.h"
 #include "types.h"
@@ -546,6 +547,17 @@ void kbd_enqueue_scan(unsigned char scan_code) {
 
             case 0x46:
                 if (!is_break) kbd_toggle_modifier(KBD_LOCK_SCROLL);
+                break;
+
+            case 0x53:
+            case 0x65:
+                /* 2.1.0: Ctrl+Alt+Del (Delete or the keypad's Del) restarts the machine, as the
+                   reset button does. Here in the keyboard interrupt, so it also works while a
+                   program runs or hangs in a loop (not when interrupts are off). */
+                if ((is_break == 0) &&
+                    ((g_kbd_control.modifiers & (KBD_MOD_CTRL | KBD_MOD_ALT)) == (KBD_MOD_CTRL | KBD_MOD_ALT))) {
+                    sys_reboot();
+                }
                 break;
 
             default:

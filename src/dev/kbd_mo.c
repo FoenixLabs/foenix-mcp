@@ -427,6 +427,17 @@ void kbdmo_enqueue_scan(unsigned char scan_code) {
                 if (!is_break) kbdmo_toggle_modifier(KBD_LOCK_SCROLL);
                 break;
 
+            case 0x53:
+            case 0x65:
+                /* 2.1.0: Ctrl+Alt+Del (Delete or the keypad's Del) restarts the machine, as the
+                   reset button does. Here in the keyboard interrupt, so it also works while a
+                   program runs or hangs in a loop (not when interrupts are off). */
+                if ((is_break == 0) &&
+                    ((g_kbdmo_control.modifiers & (KBD_MOD_CTRL | KBD_MOD_ALT)) == (KBD_MOD_CTRL | KBD_MOD_ALT))) {
+                    sys_reboot();
+                }
+                break;
+
             default:
                 break;
         }
