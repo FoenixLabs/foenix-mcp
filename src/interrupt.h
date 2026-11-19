@@ -7,6 +7,7 @@
 
 #include "sys_general.h"
 #include "types.h"
+#include "asmcall.h"
 
 /* Type declaration for an interrupt handler */
 typedef void (*p_int_handler)();
@@ -224,7 +225,7 @@ extern void int_init();
  * Returns:
  * a machine dependent representation of the interrupt masking prior to enabling
  */
-extern short int_enable_all();
+extern ASMCALL short int_enable_all();
 
 /*
  * Disable all interrupts
@@ -234,7 +235,7 @@ extern short int_enable_all();
  * Returns:
  * a machine dependent representation of the interrupt masking prior to disabling
  */
-extern short int_disable_all();
+extern ASMCALL short int_disable_all();
 
 /*
  * Restore interrupt masking state returned by a previous call to int_enable/int_disable
@@ -244,7 +245,7 @@ extern short int_disable_all();
  * Inputs:
  * int_mask = machine dependent representation of the interrupt masking
  */
-extern void int_restore(short int_mask);
+extern ASMCALL void int_restore(short int_mask);
 
 /*
  * Disable an interrupt by masking it

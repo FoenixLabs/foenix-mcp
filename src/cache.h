@@ -16,6 +16,8 @@
 #ifndef __CACHE_H
 #define __CACHE_H
 
+#include "asmcall.h"
+
 #define CACHE_DATA          0x01    /* cache_state(): the data cache is on */
 #define CACHE_INSTRUCTIONS  0x02    /* cache_state(): the instruction cache is on */
 
@@ -48,7 +50,7 @@ extern const char * cache_state_text(void);
  * (a program, a boot sector), because the instruction cache does not see
  * those writes.
  */
-extern void cache_flush(void);
+extern ASMCALL void cache_flush(void);
 
 /**
  * Switch the data cache off for a while (the instruction cache stays on).
@@ -56,7 +58,7 @@ extern void cache_flush(void);
  * then reads: the CPU does not see those writes and could read old copies.
  * Call cache_resume() afterwards.
  */
-extern void cache_data_off(void);
+extern ASMCALL void cache_data_off(void);
 
 /**
  * Set this MCP's caches up again (after cache_data_off, or whenever they may

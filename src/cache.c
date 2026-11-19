@@ -9,10 +9,10 @@
 #include "cache.h"
 
 /* The assembler routine that sets up the cache modes and switches both caches on */
-extern void cache_hw_enable(void);
+extern ASMCALL void cache_hw_enable(void);
 
 /* The assembler routine that reads the CPU's cache control register (0 on a 68000) */
-extern unsigned long cache_get_cacr(void);
+extern ASMCALL unsigned long cache_get_cacr(void);
 
 /* Cache control register bits (the same on the 68040 and the 68060) */
 #define CACR_DE 0x80000000UL    /* data cache enable */

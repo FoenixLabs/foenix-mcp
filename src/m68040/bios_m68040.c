@@ -27,7 +27,7 @@
 /*
  * Determine the correct system function implementation and call it.
  */
-unsigned long syscall_dispatch(int32_t function, int32_t param0, int32_t param1, int32_t param2, int32_t param3, int32_t param4, int32_t param5) {
+ASMCALL unsigned long syscall_dispatch(int32_t function, int32_t param0, int32_t param1, int32_t param2, int32_t param3, int32_t param4, int32_t param5) {
     switch (function & 0x00f0) {
         case 0x00:
             /* Core System Calls */

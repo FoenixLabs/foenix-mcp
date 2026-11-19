@@ -3011,7 +3011,12 @@ static FRESULT follow_path (	/* FR_OK(0): successful, !=0: error code */
 
 
 #if FF_FS_RPATH != 0
-	if (!IsSeparator(*path) && (FF_STR_VOLUME_ID != 2 || !IsTerminator(*path))) {	/* Without heading separator */
+/* MCP 2.1.0: #if instead of "if (CONSTANT == 2 && ...)", which Calypsi 5.18 compiles inverted */
+#if FF_STR_VOLUME_ID != 2
+	if (!IsSeparator(*path)) {	/* Without heading separator */
+#else
+	if (!IsSeparator(*path) && !IsTerminator(*path)) {	/* Without heading separator */
+#endif
 		dp->obj.sclust = fs->cdir;			/* Start at the current directory */
 	} else
 #endif
@@ -6404,7 +6409,10 @@ TCHAR* f_gets (
 #endif
 		/* A code point is avaialble in dc to be output */
 
-		if (FF_USE_STRFUNC == 2 && dc == '\r') continue;	/* Strip \r off if needed */
+/* MCP 2.1.0: #if instead of "if (CONSTANT == 2 && ...)", which Calypsi 5.18 compiles inverted */
+#if FF_USE_STRFUNC == 2
+		if (dc == '\r') continue;	/* Strip \r off if needed */
+#endif
 #if FF_LFN_UNICODE == 1	|| FF_LFN_UNICODE == 3	/* Output it in UTF-16/32 encoding */
 		if (FF_LFN_UNICODE == 1 && dc >= 0x10000) {	/* Out of BMP at UTF-16? */
 			*p++ = (TCHAR)(0xD800 | ((dc >> 10) - 0x40)); nc++;	/* Make and output high surrogate */
@@ -6446,7 +6454,10 @@ TCHAR* f_gets (
 		f_read(fp, s, 1, &rc);	/* Get a byte */
 		if (rc != 1) break;		/* EOF? */
 		dc = s[0];
-		if (FF_USE_STRFUNC == 2 && dc == '\r') continue;
+/* MCP 2.1.0: #if instead of "if (CONSTANT == 2 && ...)", which Calypsi 5.18 compiles inverted */
+#if FF_USE_STRFUNC == 2
+		if (dc == '\r') continue;
+#endif
 		*p++ = (TCHAR)dc; nc++;
 		if (dc == '\n') break;
 	}
@@ -6497,9 +6508,12 @@ static void putc_bfd (putbuff* pb, TCHAR c)
 #endif
 #endif
 
-	if (FF_USE_STRFUNC == 2 && c == '\n') {	 /* LF -> CRLF conversion */
+/* MCP 2.1.0: #if instead of "if (CONSTANT == 2 && ...)", which Calypsi 5.18 compiles inverted */
+#if FF_USE_STRFUNC == 2
+	if (c == '\n') {	 /* LF -> CRLF conversion */
 		putc_bfd(pb, '\r');
 	}
+#endif
 
 	i = pb->idx;			/* Write index of pb->buf[] */
 	if (i < 0) return;		/* In write error? */

@@ -154,8 +154,14 @@ endif
 
 
 # Toolchain selection ---------------------------------------------------------
+# 2.1.0: COMPILER=calypsi builds the 68k MCP with Calypsi (cc68k / as68k / ln68k, on the Linux
+# build host) instead of VBCC. VBCC stays the default until the Calypsi image is proven on the board.
+# Switching COMPILER needs a clean build: make ... clean first (the .o files have the same names).
+COMPILER ?= vbcc
 ifeq ($(CPU),w65816)
 	TOOLCHAIN = calypsi
+else ifeq ($(COMPILER),calypsi)
+	TOOLCHAIN = calypsi68k
 else
 	TOOLCHAIN = vbcc
 endif
@@ -177,6 +183,28 @@ ifeq ($(TOOLCHAIN),calypsi)
 
 	CFLAGS = -l --target Foenix --code-model large --data-model large
 	LDFLAGS=--target foenix --output-format $(LD_OUTPUT_TYPE) --list-file foenixmcp.map
+else ifeq ($(TOOLCHAIN),calypsi68k)
+	CC = cc68k
+	AS = as68k
+	LD = ln68k
+
+	# The same CPU choice as for VBCC: 68000 for the A2560U, 68040 for the Gen1 / Gen2 machines,
+	# 68060 for the K60 (CPU060=1).
+	ifeq ("$(CPU)","m68k")
+		CALYPSI_CORE = 68000
+	else
+		CALYPSI_CORE = 68040
+	endif
+	ifeq ($(CPU060),1)
+		CALYPSI_CORE = 68060
+	endif
+
+	# Large code and data model: the MCP lives in flash at $FFC9_0000 and its data in RAM, so
+	# 16-bit absolute or PC-relative addressing can't reach everything.
+	# char is signed in VBCC and the MCP code expects that (-1, < 0 tests); Calypsi's default is
+	# unsigned, so ask for signed.
+	CFLAGS = --core=$(CALYPSI_CORE) --code-model=large --data-model=large --char-is-signed -O2
+	ASFLAGS = --core=$(CALYPSI_CORE)
 else
 	CC = vc
 	AS = vasmm68k_mot
@@ -254,7 +282,13 @@ LIBS = dev/devices.a snd/sound.a fatfs/fatfs.a
 SPLASHSCREEN = rsrc/bitmaps/splash_$(UNIT).o
 
 # CPU-specific files
-cpu_s_src := $(wildcard $(CPU)/*.s)
+# The assembly is written for one assembler: vasm (Motorola syntax) in $(CPU)/, as68k (Calypsi)
+# in $(CPU)/calypsi/.
+ifeq ($(TOOLCHAIN),calypsi68k)
+	cpu_s_src := $(wildcard $(CPU)/calypsi/*.s)
+else
+	cpu_s_src := $(wildcard $(CPU)/*.s)
+endif
 cpu_c_src := $(wildcard $(CPU)/*.c)
 cpu_obj := $(subst .c,.o,$(cpu_c_src)) $(subst .s,.o,$(cpu_s_src))
 
@@ -310,6 +344,10 @@ foenixmcp.s37: $(OBJS) $(LIBS)
 
 
 DEPS = $(cpu_obj) $(c_obj) $(dev_obj) $(fatfs_obj) $(snd_obj) $(cli_obj) $(SPLASHSCREEN)
+ifeq ($(TOOLCHAIN),calypsi68k)
+	# The C library's hooks to the hardware (Calypsi only)
+	DEPS := $(DEPS) calypsi/stubs.o
+endif
 
 # We don't want to link:
 # - the startup file (because the linker script does it)
@@ -319,6 +357,42 @@ STARTUP_OBJ=$(CPU)/startup_$(CPU).o
 FILES_TO_LINK= $(subst $(STARTUP_OBJ),,$(DEPS))
 FILE_TO_LINK:=$(subst /,$(SEP),$(FILES_TO_LINK))
 
+# Calypsi: compile rule with a list file next to each object (the default rule would pass -c,
+# which cc68k does not know).
+ifeq ($(TOOLCHAIN),calypsi68k)
+%.o: %.c
+	$(CC) $(CFLAGS) --list-file=$(@:%.o=%.lst) -o $@ $<
+
+%.o: %.s
+	$(AS) $(ASFLAGS) --list-file=$(@:%.o=%.lst) -o $@ $<
+endif
+
+# objs: compile (and assemble) everything without linking, for either compiler.
+.PHONY: objs
+objs: $(DEPS)
+
+ifeq ($(TOOLCHAIN),calypsi68k)
+# Calypsi link: the linker rules calypsi/<unit>_flash_b<block>.scm (only a2560k block 1 so far)
+# give two raw files, the vector table (foenixmcp_vectors.raw) and the code (flash.raw, named
+# after the memory); ../tools/calypsi_image.py puts them into the 512 KB block image.
+# The library: printf without floating point (as VBCC's). foenixmcp.map: placement and symbols.
+# calypsi_check.py stops the build when the list files show one of Calypsi 5.18's problems:
+# the multiply-in-place bug (fix: a long index variable) or a narrowed read-modify-write of an
+# I/O register (fix: change a local copy, then write the whole register).
+CALYPSI_RULES = calypsi/$(UNIT)_flash_b$(BLOCK).scm
+foenixmcp.bin: $(DEPS) $(CALYPSI_RULES)
+	$(RM) foenixmcp_vectors.raw flash.raw
+	$(LD) -o foenixmcp_vectors.raw $(FILES_TO_LINK) $(CALYPSI_RULES) --output-format=raw \
+		--raw-multiple-memories --rtattr printf=nofloat --list-file=foenixmcp.map --cross-reference
+	$(PYTHON3) ../tools/calypsi_check.py $(DEPS:%.o=%.lst)
+	$(PYTHON3) ../tools/calypsi_image.py foenixmcp_vectors.raw flash.raw $@ --size $(PAD_FLASH_SIZE)
+
+$(CALYPSI_RULES):
+	@echo "COMPILER=calypsi: no linker rules $@ (only UNIT=a2560k BLOCK=1 so far)" && false
+
+foenixmcp.s68:
+	@echo "COMPILER=calypsi: MEMORY=ram is not supported" && false
+else
 foenixmcp.s68: $(DEPS)
 	$(CC) $(LDFLAGS) -o $@ $(FILES_TO_LINK)
 
@@ -326,6 +400,7 @@ foenixmcp.bin: $(DEPS)
 	$(CC) $(LDFLAGS) -o $@ $(FILES_TO_LINK)
 # TODO Test that the file is <= PAD_FLASH_SIZE bytes otherwise'll be slashing the OS !
 	$(PAD_CMD)
+endif
 
 # Rule for generating include file containing RLE-compressed version of BMP splashscreen
 # You need python3 installed obviously, and install some extra packages you can install with:
@@ -336,7 +411,7 @@ rsrc/bitmaps/splash_%.c: rsrc/bitmaps/splash_%.bmp
 
 # Clean up after a build
 clean:
-	$(RM) $(subst /,$(SEP),$(OBJS_TO_CLEAN)) $(subst /,$(SEP),$(DEPS)) foenixmcp.s37 *.lst *.map
+	$(RM) $(subst /,$(SEP),$(OBJS_TO_CLEAN)) $(subst /,$(SEP),$(DEPS)) $(subst /,$(SEP),$(DEPS:%.o=%.lst)) foenixmcp.s37 *.lst *.map *.raw
 	$(MAKE) --directory=$(CPU) clean
 	$(MAKE) --directory=cli clean
 	$(MAKE) --directory=dev clean

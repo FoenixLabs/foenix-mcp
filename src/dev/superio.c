@@ -234,13 +234,20 @@ void configure_zones(void) {
 
 void UnReset_LPC( ) {
   unsigned int i;
-  *GABE_CTRL_LPC = *GABE_CTRL_LPC | 0x100; // This will set the LPC_RSTn which is its normal operation state.
+  uint32_t ctrl;
+  /* 2.1.0: every change goes through a local copy, so the register is read and written as a whole
+   * long. Written as "*REG = *REG | 0x100" Calypsi changes only one byte of it (bset.b), which
+   * GABE ignores: the SuperIO then stays in reset (tools/calypsi_check.py). */
+  ctrl = *GABE_CTRL_LPC;
+  *GABE_CTRL_LPC = ctrl | 0x100; // This will set the LPC_RSTn which is its normal operation state.
   for (i = 0; i< 1000; i++);
 
-  *GABE_CTRL_LPC = *GABE_CTRL_LPC & 0xFEFF; // This will set the LPC_RSTn which is its normal operation state.
+  ctrl = *GABE_CTRL_LPC;
+  *GABE_CTRL_LPC = ctrl & 0xFEFF; // This will set the LPC_RSTn which is its normal operation state.
   for (i = 0; i< 400000; i++); 
   // So let's Unreset it
-  *GABE_CTRL_LPC = *GABE_CTRL_LPC | 0x100; // This will set the LPC_RSTn which is its normal operation state.
+  ctrl = *GABE_CTRL_LPC;
+  *GABE_CTRL_LPC = ctrl | 0x100; // This will set the LPC_RSTn which is its normal operation state.
   // Now, let's pause a bit before configuration time
   for (i = 0; i< 2000000; i++);
 }

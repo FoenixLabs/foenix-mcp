@@ -435,7 +435,8 @@ void print_banner(short channel, short model_id) {
     char line[160];
 
     if (model_id <= max_model_id) {
-        short index = model_id * lines_per_model;
+        long m = model_id;      /* long: Calypsi 5.18 would multiply model_id in place (tools/calypsi_check.py) */
+        short index = (short)(m * lines_per_model);
         int i = 0, j = 0;
 
         for (i = 0; i < lines_per_model; i++) {
