@@ -133,6 +133,7 @@
 // #define KFN_TXT_FILL            0x70    /* Fill the current region */
 #define KFN_TXT_SET_CURSOR_VIS  0x71    /* Set cursor visibility */
 #define KFN_TXT_GET_SIZES       0x72    /* Get the screen size (visible text cells and total pixel resolution) */
+#define KFN_TXT_TOPBAR          0x73    /* 2.1.0: put a program's text in the top bar */
 
 /*
  * Call into the kernel (provided by assembly)
@@ -921,6 +922,18 @@ extern SYSTEMCALL short sys_txt_set_font(short screen, short width, short height
  * @param pixel_size the size of the screen in pixels (may be null)
  */
 extern SYSTEMCALL void sys_txt_get_sizes(short screen, p_extent text_size, p_extent pixel_size);
+
+/**
+ * 2.1.0: put a program's text in the USER part (the middle) of a screen's top bar.
+ *
+ * The MCP clears the text when the program ends. Text that does not fit is cut off on the right.
+ *
+ * @param screen the screen number (as for the other sys_txt calls)
+ * @param text the text; 0 or "" clears the USER part
+ * @return how many characters fit in the USER part (0 if the screen is too narrow for one), or a
+ *         negative number for a screen that does not exist
+ */
+extern SYSTEMCALL short sys_txt_topbar(short screen, const char * text);
 
 /**
  * Set the size of the border of the screen (if supported)

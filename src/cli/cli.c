@@ -25,6 +25,7 @@
 #include "cli/dos_cmds.h"
 #include "cli/mem_cmds.h"
 #include "cli/settings.h"
+#include "topbar.h"
 #include "cli/sound_cmds.h"
 #include "cli/test_cmds.h"
 #include "cli/vi.h"
@@ -629,7 +630,7 @@ short cmd_sysinfo(short channel, int argc, const char * argv[]) {
 
     short screen = sys_chan_device(channel);
 
-    sys_txt_get_sizes(screen, &text_size, &pixel_size);
+    txt_get_sizes(screen, &text_size, &pixel_size);    /* 2.1.0: the whole screen, top bar included */
     sprintf(buffer, "Screen#%d size: %dx%d characters, %dx%d pixels.\n", screen, text_size.width, text_size.height, pixel_size.width, pixel_size.height);
     print(channel, buffer);
 
@@ -702,6 +703,25 @@ void cli_ensure_console(short channel) {
 
     // Make sure the screen has text enabled
     txt_set_mode(sys_chan_device(channel), TXT_MODE_TEXT);
+
+    /* 2.1.0: back to the command line's region, everything below the top bar. A program sets
+       its own regions (always below the bar, see topbar.c) and may leave one behind. */
+    {
+        short dev = sys_chan_device(channel);
+        t_extent size;
+        t_rect command_region;
+
+        size.width = 0;
+        size.height = 0;
+        txt_get_sizes(dev, &size, 0);
+        if (size.height > 1) {
+            command_region.origin.x = 0;
+            command_region.origin.y = 1;
+            command_region.size.width = size.width;
+            command_region.size.height = size.height - 1;
+            txt_set_region(dev, &command_region);
+        }
+    }
 }
 
 /**
@@ -1472,59 +1492,26 @@ short cli_process_line(short channel, char * command_line) {
     return 0;       // 2.1.0: an empty line did not return anything
 }
 
+/**
+ * Draw the top bar of a screen for the command line.
+ *
+ * 2.1.0: the bar is drawn by topbar.c, with the parts APP (here: the current folder), USER and
+ * CLOCK. The "Foenix/MCP - " in front of the folder is gone, to leave room for the parts.
+ *
+ * @param channel the channel of the screen
+ * @param status the text for the APP part: the current folder
+ * @param is_active 1 for the screen the command line works on, 0 for the other one
+ */
 void cli_draw_window(short channel, const char * status, short is_active) {
-    const char * title_header = "Foenix/MCP - ";
-    unsigned char foreground, background;
-    char buffer[256];
-    t_point cursor;
-    t_rect region, old_region, full_region;
-    short i = 0, j;
-
+    short i;
     short dev = sys_chan_device(channel);
     if (dev == ERR_BADCHANNEL) {
         ERROR1("cli_draw_window on bad channel %d", channel);
         return;
     }
 
-    // Save the current region and cursor location
-    sys_txt_get_xy(dev, &cursor);
-    sys_txt_get_region(dev, &old_region);
-    sys_txt_get_color(dev, &foreground, &background);
-
-    // Return to the full region and get its dimensions
-    region.origin.x = 0;
-    region.origin.y = 0;
-    region.size.width = 0;
-    region.size.height = 0;
-    sys_txt_set_region(dev, &region);
-    sys_txt_get_region(dev, &full_region);
-
-    // Display the titlebar
-    i = 0;
-    sys_txt_set_xy(dev, 0, 0);
-    if (channel == 0) {
-        sys_txt_set_color(dev, background, foreground);
-    }
-    for (j = 0; j < strlen(title_header); j++) {
-        buffer[i++] = title_header[j];
-    }
-    for (j = 0; j < strlen(status); j++) {
-        buffer[i++] = status[j];
-    }
-    while (i < full_region.size.width) {
-        if (is_active) {
-            buffer[i++] = ' ';
-        } else {
-            buffer[i++] = 0xB0;
-        }
-    }
-    buffer[i++] = 0;
-    print(channel, buffer);
-
-    // Restore the region and cursor location
-    sys_txt_set_color(dev, foreground, background);
-    sys_txt_set_region(dev, &old_region);
-    sys_txt_set_xy(dev, cursor.x, cursor.y);
+    topbar_set_app(dev, status, 0);
+    topbar_draw(dev, is_active);
 
     // Set cursor visibility based on if the screen is active
     for (i = 0; i < cli_sys_info.screens; i++) {

@@ -21,6 +21,7 @@
 #include "dev/block.h"
 #include "dev/fsys.h"
 #include "dev/rtc.h"
+#include "topbar.h"
 #include "sys_general.h"
 
 #if MODEL == MODEL_FOENIX_A2560K
@@ -314,12 +315,13 @@ ASMCALL unsigned long syscall_dispatch(int32_t function, int32_t param0, int32_t
                     return 0;
 
                 case KFN_TXT_SET_REGION:
-                    /* Sets the clipping/scrolling region for further text operations */
-                    return txt_set_region((short)param0, (p_rect)param1);
+                    /* Sets the clipping/scrolling region for further text operations.
+                       2.1.0: as a program sees it, without the top bar (topbar.c) */
+                    return topbar_prog_set_region((short)param0, (p_rect)param1);
 
                 case KFN_TXT_GET_REGION:
-                    /* Gets the current clipping/scrolling region */
-                    return txt_get_region((short)param0, (p_rect)param1);
+                    /* Gets the current clipping/scrolling region (2.1.0: without the top bar) */
+                    return topbar_prog_get_region((short)param0, (p_rect)param1);
 
                 case KFN_TXT_SET_COLOR:
                     /* Sets the foreground and background text colors */
@@ -359,8 +361,13 @@ ASMCALL unsigned long syscall_dispatch(int32_t function, int32_t param0, int32_t
                     return 0;
 
                 case KFN_TXT_GET_SIZES:
-                    txt_get_sizes((short)param0, (p_extent)param1, (p_extent)param2);
+                    /* 2.1.0: the screen as a program sees it, without the top bar (topbar.c) */
+                    topbar_prog_get_sizes((short)param0, (p_extent)param1, (p_extent)param2);
                     return 0;
+
+                case KFN_TXT_TOPBAR:
+                    /* 2.1.0: put a program's text in the USER part of the top bar */
+                    return topbar_set_user((short)param0, (const char *)param1);
 
                 default:
                     return ERR_GENERAL;
