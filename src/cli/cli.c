@@ -859,6 +859,22 @@ short cli_getchar(short channel) {
             case CLI_ES_BASE:
                 // We are not processing a sequence...
                 if (c == CHAR_ESC) {
+                    /* 2.1.0: an ESC with nothing after it is the Esc key of a PS/2 keyboard (the
+                     * built-in keyboard sends ESC ESC). The keyboard drivers put a whole sequence
+                     * in the queue at once, so nothing waiting means no sequence: return it now
+                     * instead of waiting for the next key, which would swallow the Esc. A terminal
+                     * on the remote console (COM1) sends a sequence one byte at a time (87 us per
+                     * byte at 115200), so first wait a little for the rest. */
+                    short wait;
+                    for (wait = 0; wait < 2000; wait++) {
+                        if (sys_chan_status(channel) & CDEV_STAT_READABLE) {
+                            break;
+                        }
+                    }
+                    if (wait >= 2000) {
+                        return c;
+                    }
+
                     // Escape has been seen
                     state = CLI_ES_ESC;
 

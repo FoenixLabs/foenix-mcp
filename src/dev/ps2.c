@@ -100,28 +100,28 @@ short g_mouse_state = 0;                /* Mouse packet state machine's state */
  * to ANSI escape codes
  */
 static const char * ansi_keys[] = {
-    "1~",      /* HOME */
-    "2~",      /* INS */
-    "3~",      /* DELETE */
-    "4~",      /* END */
-    "5~",      /* PgUp */
-    "6~",      /* PgDn */
+    "1",       /* HOME */
+    "2",       /* INS */
+    "3",       /* DELETE */
+    "4",       /* END */
+    "5",       /* PgUp */
+    "6",       /* PgDn */
     "A",       /* Up */
     "B",       /* Left */
     "C",       /* Right */
     "D",       /* Down */
-    "11~",     /* F1 */
-    "12~",     /* F2 */
-    "13~",     /* F3 */
-    "14~",     /* F4 */
-    "15~",     /* F5 */
-    "17~",     /* F6 */
-    "18~",     /* F7 */
-    "19~",     /* F8 */
-    "20~",     /* F9 */
-    "21~",     /* F10 */
-    "23~",     /* F11 */
-    "24~",     /* F12 */
+    "11",      /* F1 */
+    "12",      /* F2 */
+    "13",      /* F3 */
+    "14",      /* F4 */
+    "15",      /* F5 */
+    "17",      /* F6 */
+    "18",      /* F7 */
+    "19",      /* F8 */
+    "20",      /* F9 */
+    "21",      /* F10 */
+    "23",      /* F11 */
+    "24",      /* F12 */
 };
 
 // Translation table from base set1 make scan codes to Foenix scan codes
@@ -566,13 +566,14 @@ unsigned short kbd_get_scancode() {
     return rb_word_get(&g_kbd_control.sc_buf);
 }
 
+static void kbd_process_scan(unsigned char scan_code);
+
 /*
  * IRQ handler for the keyboard... read a scan code and queue it
  */
 void kbd_handle_irq() {
     volatile unsigned char *data = (unsigned char *)PS2_DATA_BUF;
     unsigned char scan_code = *data;
-    unsigned char translated_code;
 
     /* Clear the pending flag */
     int_clear(INT_KBD_PS2);
@@ -581,6 +582,76 @@ void kbd_handle_irq() {
 	volatile __attribute__((far)) char * text = (char *)0xafa002;
 	*text = *text + 1;
 #endif
+
+    kbd_process_scan(scan_code);
+}
+
+/*
+ * 2.1.0: scan code set 2 -> set 1, as the 8042 does for port 1 ("translation"). The controller
+ * only translates port 1; a keyboard on port 2 sends set 2, so kbd2_handle_irq does it itself.
+ * Index = set 2 code (0x00 - 0x7F, and 0x83 = F7 at the end), value = set 1 code.
+ */
+static const unsigned char kbd_set2_to_set1[0x80] = {
+    0xff, 0x43, 0x41, 0x3f, 0x3d, 0x3b, 0x3c, 0x58,     /* 0x00 - 0x07 */
+    0x64, 0x44, 0x42, 0x40, 0x3e, 0x0f, 0x29, 0x59,     /* 0x08 - 0x0F */
+    0x65, 0x38, 0x2a, 0x70, 0x1d, 0x10, 0x02, 0x5a,     /* 0x10 - 0x17 */
+    0x66, 0x71, 0x2c, 0x1f, 0x1e, 0x11, 0x03, 0x5b,     /* 0x18 - 0x1F */
+    0x67, 0x2e, 0x2d, 0x20, 0x12, 0x05, 0x04, 0x5c,     /* 0x20 - 0x27 */
+    0x68, 0x39, 0x2f, 0x21, 0x14, 0x13, 0x06, 0x5d,     /* 0x28 - 0x2F */
+    0x69, 0x31, 0x30, 0x23, 0x22, 0x15, 0x07, 0x5e,     /* 0x30 - 0x37 */
+    0x6a, 0x72, 0x32, 0x24, 0x16, 0x08, 0x09, 0x5f,     /* 0x38 - 0x3F */
+    0x6b, 0x33, 0x25, 0x17, 0x18, 0x0b, 0x0a, 0x60,     /* 0x40 - 0x47 */
+    0x6c, 0x34, 0x35, 0x26, 0x27, 0x19, 0x0c, 0x61,     /* 0x48 - 0x4F */
+    0x6d, 0x73, 0x28, 0x74, 0x1a, 0x0d, 0x62, 0x6e,     /* 0x50 - 0x57 */
+    0x3a, 0x36, 0x1c, 0x1b, 0x75, 0x2b, 0x63, 0x76,     /* 0x58 - 0x5F */
+    0x55, 0x56, 0x77, 0x78, 0x79, 0x7a, 0x0e, 0x7b,     /* 0x60 - 0x67 */
+    0x7c, 0x4f, 0x7d, 0x4b, 0x47, 0x7e, 0x7f, 0x6f,     /* 0x68 - 0x6F */
+    0x52, 0x53, 0x50, 0x4c, 0x4d, 0x48, 0x01, 0x45,     /* 0x70 - 0x77 */
+    0x57, 0x4e, 0x51, 0x4a, 0x37, 0x49, 0x46, 0x54      /* 0x78 - 0x7F */
+};
+
+static unsigned char kbd2_break = 0;    /* 0x80 after an F0 (break prefix) from the port 2 keyboard */
+
+/*
+ * 2.1.0: IRQ handler for a keyboard on port 2 (the "mouse" port, interrupt INT_MOUSE)
+ *
+ * The A2560K has one PS/2 socket, and it is wired to port 2 of the SuperIO's 8042. A keyboard
+ * there sends scan code set 2, which the controller does not translate on port 2. This handler
+ * does the translation the controller does on port 1, then feeds the same state machine:
+ *   F0 xx    (break)      -> set 1 code of xx with bit 7 set
+ *   E0, E1   (prefixes)   -> passed on as they are
+ *   83       (F7)         -> 0x41
+ *   other bytes >= 0x80   -> passed on as they are (keyboard replies such as AA, FA)
+ */
+void kbd2_handle_irq() {
+    volatile unsigned char *data = (unsigned char *)PS2_DATA_BUF;
+    unsigned char code = *data;
+
+    /* Clear the pending flag */
+    int_clear(INT_MOUSE);
+
+    if (code == 0xF0) {
+        kbd2_break = 0x80;              /* the next code is a key going up */
+        return;
+    }
+    if (code < 0x80) {
+        code = kbd_set2_to_set1[code] | kbd2_break;
+    } else if (code == 0x83) {
+        code = 0x41 | kbd2_break;
+    }
+    if ((code != 0xE0) && (code != 0xE1)) {
+        kbd2_break = 0;                 /* a prefix keeps the break for the code after it */
+    }
+    kbd_process_scan(code);
+}
+
+/*
+ * Run a byte (scan code set 1, as translated by the controller) through the keyboard state machine
+ *
+ * 2.1.0: split off from kbd_handle_irq, so kbd2_handle_irq (a keyboard on port 2) can use it too.
+ */
+static void kbd_process_scan(unsigned char scan_code) {
+    unsigned char translated_code;
 
     if (scan_code) {
         // Make sure the scan code isn't 0 or 128, which are invalid make/break codes
@@ -772,32 +843,46 @@ void kbd_handle_irq() {
  */
 static char kbd_to_ansi(unsigned char modifiers, unsigned char c) {
     if ((c >= 0x80) && (c <= 0x95)) {
-        /* The key is a function key or a special control key */
+        /* The key is a function key or a special control key.
+         *
+         * 2.1.0: the same sequences as the built-in keyboard (kbd_mo.c), which the command line
+         * and VI read: ESC [ 11 ; 5 ~ for a numbered key (here Ctrl+F1), ESC [ 5 A for a letter
+         * key (Ctrl+Up). The modifier number is the ANSI one: 1 + Shift 1 + Alt 2 + Ctrl 4 +
+         * OS 8. Before, the PS/2 driver put the modifier in front of the number and built it
+         * from its own bit order, so Ctrl and Alt came out as other keys and modifiers. */
+        const char * ansi_key = ansi_keys[c - 0x80];
         const char * sequence;
+        short numeric = ((ansi_key[0] >= '0') && (ansi_key[0] <= '9'));
 
         /* After ESC, all sequences have [ */
         rb_word_put(&g_kbd_control.char_buf, '[');
 
+        if (numeric) {
+            for (sequence = ansi_key; *sequence != 0; sequence++) {
+                rb_word_put(&g_kbd_control.char_buf, *sequence);
+            }
+        }
+
         /* Check to see if we need to send a modifier sequence */
         if (modifiers & (KBD_MOD_SHIFT | KBD_MOD_CTRL | KBD_MOD_ALT | KBD_MOD_OS)) {
-            unsigned char code_bcd;
-            short modifier_code = 0;
-            short i;
+            short modifier_code = 1;
 
-            modifier_code = (modifiers >> 2) & 0x0E;
-            code_bcd = i_to_bcd(modifier_code);
+            if (modifiers & KBD_MOD_SHIFT) modifier_code += 1;
+            if (modifiers & KBD_MOD_ALT)   modifier_code += 2;
+            if (modifiers & KBD_MOD_CTRL)  modifier_code += 4;
+            if (modifiers & KBD_MOD_OS)    modifier_code += 8;
 
-            if (code_bcd & 0xF0) {
-                rb_word_put(&g_kbd_control.char_buf, ((code_bcd & 0xF0) >> 4) + '0');
+            if (numeric) {
+                rb_word_put(&g_kbd_control.char_buf, ';');
             }
-            rb_word_put(&g_kbd_control.char_buf, (code_bcd & 0x0F) + '0');
-            rb_word_put(&g_kbd_control.char_buf, ';');
+            if (modifier_code >= 10) {
+                rb_word_put(&g_kbd_control.char_buf, '1');
+            }
+            rb_word_put(&g_kbd_control.char_buf, '0' + (modifier_code % 10));
         }
 
-        /* Get the expanded sequence and put it in the queue */
-        for (sequence = ansi_keys[c - 0x80]; *sequence != 0; sequence++) {
-            rb_word_put(&g_kbd_control.char_buf, *sequence);
-        }
+        /* A letter key ends with its letter, a numbered key with a tilde */
+        rb_word_put(&g_kbd_control.char_buf, numeric ? '~' : ansi_key[0]);
 
         return 0x1B;    /* Start the sequence with an escape */
 
@@ -1232,9 +1317,46 @@ void ps2_identify(short port) {
  * Returns:
  *  Status code indicating if either the mouse or the keyboard is missing.
  */
+/*
+ * 2.1.0: find out whether port 2 (the "mouse" port) has a keyboard
+ *
+ * Asks the device on port 2 for its ID (command F2). A mouse answers 00 (03 or 04 for a wheel
+ * mouse), a keyboard AB xx. No answer means nothing is plugged in yet; that counts as a keyboard,
+ * so one plugged in later works: a keyboard starts sending keys on its own after power-up, a
+ * mouse sends nothing until it is enabled (only AA 00, which the keyboard handler ignores).
+ * A keyboard is enabled again (F4) after the ID; it stays in scan code set 2.
+ *
+ * @return 1 for a keyboard or no device, 0 for a mouse (or another device)
+ */
+static short ps2_port2_keyboard() {
+    short id = -1;
+
+    ps2_mouse_command(KBD_CMD_DISABLE);         /* F5: no keys while we ask */
+    ps2_flush_out();
+    if (ps2_mouse_command(KBD_CMD_ID) == PS2_RESP_ACK) {
+        if (ps2_wait_out() == 0) {
+            id = (short)*PS2_DATA_BUF;
+            if ((id == 0xAB) && (ps2_wait_out() == 0)) {
+                (void)*PS2_DATA_BUF;            /* a keyboard's second ID byte: it must not
+                                                   reach the key handler later (83 = F7) */
+            }
+        }
+    }
+    ps2_flush_out();
+    INFO1("PS/2: port 2 ID %02X", id);
+
+    if ((id == 0xAB) || (id < 0)) {
+        ps2_mouse_command(KBD_CMD_ENABLE);      /* F4: keys again */
+        ps2_flush_out();
+        return 1;
+    }
+    return 0;
+}
+
 short ps2_init() {
     unsigned char x = 0;
     short mouse_present = 0;
+    short kbd_on_port2 = 0;
     short mouse_error = 0;
     short res = 0;
 
@@ -1314,8 +1436,13 @@ short ps2_init() {
     // TODO: set the keyboard LEDs
 
     if (mouse_present) {
-        /* Initialize the mouse */
-        if ((mouse_error = mouse_init())) {
+        /* 2.1.0: what is on port 2? On the A2560K the only PS/2 socket is wired there, so a
+           keyboard (or nothing yet) is set up as a keyboard, and only a mouse as a mouse. */
+        kbd_on_port2 = ps2_port2_keyboard();
+        if (kbd_on_port2) {
+            INFO("PS/2: keyboard (or no device) on port 2");
+        } else if ((mouse_error = mouse_init())) {
+            /* Initialize the mouse */
             log_num(LOG_INFO, "Unable to initialize mouse", mouse_error);
         }
     }
@@ -1336,7 +1463,14 @@ short ps2_init() {
     int_enable(INT_KBD_PS2);
 	INFO("PS/2: Keyboard interrupt enabled.");
 
-    if (mouse_present && (mouse_error == 0)) {
+    if (mouse_present && kbd_on_port2) {
+        /* 2.1.0: the keyboard on port 2 comes in on the mouse interrupt */
+        kbd2_break = 0;
+        int_register(INT_MOUSE, kbd2_handle_irq);
+        int_clear(INT_MOUSE);
+        int_enable(INT_MOUSE);
+
+    } else if (mouse_present && (mouse_error == 0)) {
         DEBUG("mouse enabled");
 
         // Register the interrupt handler for the mouse
