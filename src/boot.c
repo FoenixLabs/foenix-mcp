@@ -249,7 +249,7 @@ short boot_screen(void) {
     unsigned long current_jiffies = 0;
     int i = 0, j = 0;
     const unsigned char * pixels;
-    volatile unsigned short * vram = 0x00800000;        // VSRAM BANK B
+    volatile unsigned short * vram = (volatile unsigned short *)0x00800000;   // VSRAM BANK B
     unsigned int * VKYII_LGCY_CFG           = (void *) 0xFEC80000;   // Base Address 
     unsigned int * VKYIII_TOSGRAPH_CTRL     = (void *) 0xFEC97000;   // Base Address For Atari Style Bitmap Control
     unsigned int * VSRAM_B                  = (void *) 0x00800000;   // Base Address For Atari Style Bitmap Control   
@@ -298,7 +298,7 @@ short boot_screen(void) {
     VKYIII_TOSGRAPH_CTRL[5] = 0x00521A44; // Color 1 
 
     // So decompress the data stored in Flash and go write it in its proper Buffer
-    decompress_rle_16bit(FNXL_Logo1bpp, VSRAM_B, FNXL_Logo1bpp_len);
+    decompress_rle_16bit(FNXL_Logo1bpp, (uint16_t *)VSRAM_B, FNXL_Logo1bpp_len);
 
     if ( *VKYII_LGCY_CFG & 0x40000000 ) {
         for (j = 38400; j < 40960; ) {

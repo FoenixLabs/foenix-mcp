@@ -1454,6 +1454,7 @@ short cli_process_line(short channel, char * command_line) {
         // Try to execute the command
         return cli_exec(channel, argv[0], argc, argv);
     }
+    return 0;       // 2.1.0: an empty line did not return anything
 }
 
 void cli_draw_window(short channel, const char * status, short is_active) {

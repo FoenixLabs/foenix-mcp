@@ -132,6 +132,7 @@ short cmd_mkdir(short screen, int argc, const char * argv[]) {
         print(screen, "USAGE: MKDIR <path>\n");
         return -1;
     }
+    return 0;       // 2.1.0: success did not return anything
 }
 
 /*
@@ -957,6 +958,7 @@ short cmd_label(short screen, int argc, const char * argv[]) {
         print(screen, "USAGE: LABEL <drive #> <label>\n");
         return -1;
     }
+    return 0;       // 2.1.0: success did not return anything
 }
 
 /**
@@ -1060,4 +1062,5 @@ short cmd_format(short screen, int argc, const char * argv[]) {
         print(screen, "USAGE: FORMAT <drive #>\n");
         return -1;
     }
+    return 0;       // 2.1.0: success did not return anything
 }

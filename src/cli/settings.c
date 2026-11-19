@@ -266,6 +266,7 @@ short cli_cmd_get(short channel, int argc, const char * argv[]) {
         print(channel, "USAGE: GET <name>\n");
         return -1;
     }
+    return 0;       // 2.1.0: GET HELP did not return anything
 }
 
 /*

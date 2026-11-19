@@ -12,6 +12,8 @@
 #include "sys_general.h"
 #include "syscalls.h"
 
+short lpt_write_b(p_channel chan, unsigned char b);
+
 #if HAS_PARALLEL_PORT
 
 #define MAX_LPT_JIFFIES     600
@@ -49,7 +51,9 @@ short lpt_open(t_channel * chan, const uint8_t * path, short mode) {
     *LPT_CTRL_PORT = LPT_CTRL_mINIT | LPT_CTRL_SELECT;
 
     // Write a dummy character to kick everything off
-    lpt_write_b(0, "\x00", 0);
+    // 2.1.0: called with the right arguments (a 0 byte). It was used before it was declared, with
+    // a string and an extra argument, so the byte sent was the low byte of the string's address.
+    lpt_write_b(chan, 0);
 
     return 0;
 }
@@ -140,7 +144,9 @@ short lpt_status(p_channel chan) {
     if ((stat & LPT_STAT_nERROR) == 0) result |= LPT_STATUS_ERROR;
     if (stat & LPT_STAT_PO) result |= LPT_STATUS_PAPER;
     if (stat & LPT_STAT_SELECT) result |= LPT_STATUS_ONLINE;
-    if ((stat & (LPT_STAT_nERROR | LPT_STAT_PO | LPT_STAT_nBUSY | LPT_STAT_SELECT)) == LPT_STAT_nERROR | LPT_STAT_nBUSY | LPT_STAT_SELECT) {
+    // 2.1.0: brackets around the expected bits. Without them == came first, so the test was always
+    // true and the printer always counted as writable.
+    if ((stat & (LPT_STAT_nERROR | LPT_STAT_PO | LPT_STAT_nBUSY | LPT_STAT_SELECT)) == (LPT_STAT_nERROR | LPT_STAT_nBUSY | LPT_STAT_SELECT)) {
         // Online, there's paper, not busy, and not in error
         result |= LPT_STATUS_WRITABLE;
     }

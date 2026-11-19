@@ -173,6 +173,7 @@ unsigned char uart_get(short uart) {
         /* Return the byte */
         return uart_base[UART_TRHB];
     }
+    return 0;       // 2.1.0: no such UART: nothing was returned
 }
 
 /**

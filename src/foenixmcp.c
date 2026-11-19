@@ -56,6 +56,7 @@ extern char __memory_start[];
 #include "dev/ps2.h"
 #include "dev/rtc.h"
 #include "dev/sdc.h"
+#include "dev/sdc_new.h"
 #include "dev/txt_screen.h"
 
 #include "dev/uart.h"
@@ -96,7 +97,7 @@ int main(int argc, char * argv[]) {
     sid_test_internal();
     TRACE("Internal SID tested");
 
-    if (result = cli_init()) {
+    if ((result = cli_init())) {
         ERROR1("FAILED: CLI initialization (%d)", result);
     } else {
         INFO("CLI initialized.");
@@ -285,7 +286,7 @@ static void os_devices_initialize(void) {
     }
 #endif
 
-    if (res = uart_install()) {
+    if ((res = uart_install())) {
         ERROR1("FAILED: serial port initialization (%d)", res);
     } else {
         INFO("Serial ports initialized.");

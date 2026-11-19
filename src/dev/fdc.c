@@ -257,6 +257,7 @@ short fdc_in(unsigned char *ptr) {
         }
     }
     *ptr = *FDC_DATA;
+    return 0;       // 2.1.0: success did not return anything, so a caller could see an "error"
 }
 
 /*
@@ -1007,10 +1008,18 @@ short fdc_sense_status() {
     return (short)trans.results[0];
 }
 
+/* The assembly routine takes its parameters in registers. __reg() is VBCC's way to say so; other
+ * compilers (Calypsi) need the assembly to take them from the stack instead (simple_call).
+ */
+#if defined(__VBCC__)
 extern short fdc_cmd_asm(__reg("d1") short cmd,
                          __reg("d2") short argc, __reg("a1") uint8_t * argv,
                          __reg("a2") uint8_t * buffer,
                          __reg("d3") short resultc, __reg("a3") uint8_t * results);
+#else
+extern short fdc_cmd_asm(short cmd, short argc, uint8_t * argv, uint8_t * buffer,
+                         short resultc, uint8_t * results);
+#endif
 
 /*
  * Read a block from the FDC
