@@ -24,6 +24,7 @@
 #include "cli/dos_copy.h"
 #include "cli/dos_cmds.h"
 #include "cli/mem_cmds.h"
+#include "cli/net_cmds.h"
 #include "cli/settings.h"
 #include "topbar.h"
 #include "memory.h"
@@ -164,6 +165,7 @@ const t_cli_command g_cli_commands[] = {
     { "MKBOOT", "MKBOOT <drive #> -r | -b <boot sector path> | -s <start file path> : make a drive bootable", cmd_mkboot },
     { "MKDIR", "MKDIR <path> : create a directory", cmd_mkdir },
     { "MOVE", "MOVE <src path> <dst path> : move files or folders (* and ? allowed in the name)", cmd_move },
+    { "NET", "NET [ON|OFF|LOG [CLEAR]] : network state and settings, start or stop the network, the network log", cmd_net },
     { "PEEK8", "PEEK8 <addr> : print the byte at the address in memory", mem_cmd_peek8 },
     { "PEEK16", "PEEK16 <addr> : print the 16-bit word at the address in memory", mem_cmd_peek16 },
     { "PEEK32", "PEEK32 <addr> : print the 32-bit long word at the address in memory", mem_cmd_peek32 },

@@ -13,6 +13,7 @@
 #include "log.h"
 #include "errors.h"
 #include "settings.h"
+#include "net_cmds.h"
 #include "simpleio.h"
 #include "syscalls.h"
 #include "interrupt.h"
@@ -326,6 +327,7 @@ void cli_set_help(short channel) {
         sys_chan_write(channel, "\n", 1);
     }
     print(channel, "F1-F8|+F1-+F8 <command> -- run <command> with a function key (+ = Shift; GET FX lists them)\n");
+    print(channel, "NET DHCP ON|OFF, NET IP|MASK|GATEWAY a.b.c.d, NET MAC xx:..:xx -- network settings (GET NET lists them)\n");
 
 #if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_A2560X || MODEL == MODEL_FOENIX_GENX
     color_help(channel);
@@ -342,6 +344,10 @@ short cli_cmd_set(short channel, int argc, const char * argv[]) {
     if ((argc >= 2) && (fkey_index(argv[1]) >= 0)) {
         /* 2.1.0: a function key takes the whole rest of the line, not one word */
         return fkey_set(channel, fkey_index(argv[1]), argc, argv);
+
+    } else if ((argc >= 2) && (strcicmp(argv[1], "NET") == 0)) {
+        /* 2.1.0: SET NET <name> <value> has two words after SET NET */
+        return net_cmd_set(channel, argc, argv);
 
     } else if (argc == 3) {
         result = cli_set_value(channel, argv[1], argv[2]);
@@ -368,6 +374,11 @@ short cli_cmd_set(short channel, int argc, const char * argv[]) {
 short cli_cmd_get(short channel, int argc, const char * argv[]) {
     char buffer[128];
     short result;
+
+    if ((argc >= 2) && (strcicmp(argv[1], "NET") == 0)) {
+        /* 2.1.0: GET NET lists the network settings, GET NET <name> shows one */
+        return net_cmd_get(channel, argc, argv);
+    }
 
     if (argc == 2) {
 
