@@ -11,6 +11,7 @@
 #include "A2560K/vky_chan_a.h"
 #include "A2560K/vky_chan_b.h"
 #include "dev/txt_screen.h"
+#include "dev/txt_cells.h"
 #include "dev/txt_a2560k_b.h"
 
 extern const unsigned char MSX_CP437_8x8_bin[];
@@ -397,8 +398,9 @@ short txt_a2560k_b_get_color(unsigned char * foreground, unsigned char * backgro
 void txt_a2560k_b_scroll(short horizontal, short vertical) {
     /* int, not short: Calypsi 5.18 multiplies a short y in place in "y * width" and the loop then
      * goes on with y * width (tools/calypsi_check.py) */
-    int x, x0, x1, x2, x3, dx;
+    int x0, x1, x2, x3, dx;
     int y, y0, y1, y2, y3, dy;
+    int width, distance, count;
 
     /*
      * Determine limits of rectangles to move and fill and directions of loops
@@ -442,40 +444,35 @@ void txt_a2560k_b_scroll(short horizontal, short vertical) {
         dx = -1;
     }
 
-    /* Copy the rectangle */
+    /*
+     * The loops below walk pointers through the text and colour memory instead of computing
+     * an index for every character. Scrolling copies the whole screen for every printed line, so
+     * this loop decides how fast the console is: with an index per character Calypsi kept the
+     * loop values on the stack and printing was 1.7 times slower than with VBCC (cachebench).
+     * The inner loops are in txt_cells.c: in this big function Calypsi still ran out of
+     * registers. The source cell is always the same distance from the destination cell.
+     */
+    width = a2560k_b_max_size.width;
+    distance = vertical * width + horizontal;
 
+    /* Copy the rectangle: (x2 - x0) * dx cells per row */
+    count = (x2 - x0) * dx;
     for (y = y0; y != y2; y += dy) {
-        int row_dst = y * a2560k_b_max_size.width;
-        int row_src = (y + vertical) * a2560k_b_max_size.width;
-
-        for (x = x0; x != x2; x += dx) {
-            int offset_dst = row_dst + x;
-            int offset_src = row_src + x + horizontal;
-
-            VKY3_B_TEXT_MATRIX[offset_dst] = VKY3_B_TEXT_MATRIX[offset_src];
-            VKY3_B_COLOR_MATRIX[offset_dst] = VKY3_B_COLOR_MATRIX[offset_src];
-        }
+        txt_cells_copy(VKY3_B_TEXT_MATRIX + y * width + x0, VKY3_B_COLOR_MATRIX + y * width + x0, distance, count, dx);
     }
 
-    /* Clear the rectangles */
-
+    /* Clear the rectangles the copy left behind: the columns (x2..x3) and the rows (y2..y3) */
     if (horizontal != 0) {
+        count = (x3 - x2) * dx;
         for (y = y0; y != y3; y += dy) {
-            int row_dst = y * a2560k_b_max_size.width;
-            for (x = x2; x != x3; x += dx) {
-                VKY3_B_TEXT_MATRIX[row_dst + x] = ' ';
-                VKY3_B_COLOR_MATRIX[row_dst + x] = a2560k_b_color;
-            }
+            txt_cells_set(VKY3_B_TEXT_MATRIX + y * width + x2, VKY3_B_COLOR_MATRIX + y * width + x2, ' ', a2560k_b_color, count, dx);
         }
     }
 
     if (vertical != 0) {
+        count = (x3 - x0) * dx;
         for (y = y2; y != y3; y += dy) {
-            int row_dst = y * a2560k_b_max_size.width;
-            for (x = x0; x != x3; x += dx) {
-                VKY3_B_TEXT_MATRIX[row_dst + x] = ' ';
-                VKY3_B_COLOR_MATRIX[row_dst + x] = a2560k_b_color;
-            }
+            txt_cells_set(VKY3_B_TEXT_MATRIX + y * width + x0, VKY3_B_COLOR_MATRIX + y * width + x0, ' ', a2560k_b_color, count, dx);
         }
     }
 }
@@ -487,16 +484,12 @@ void txt_a2560k_b_scroll(short horizontal, short vertical) {
  * @param c the character to fill the region with
  */
 void txt_a2560k_b_fill(char c) {
-    int x;
     int y;
+    int width = a2560k_b_max_size.width;
 
     for (y = 0; y < a2560k_b_region.size.height; y++) {
-        int offset_row = (a2560k_b_region.origin.y + y) * a2560k_b_max_size.width;
-        for (x = 0; x < a2560k_b_region.size.width; x++) {
-            int offset = offset_row + a2560k_b_region.origin.x + x;
-            VKY3_B_TEXT_MATRIX[offset] = c;
-            VKY3_B_COLOR_MATRIX[offset] = a2560k_b_color;
-        }
+        int offset = (a2560k_b_region.origin.y + y) * width + a2560k_b_region.origin.x;
+        txt_cells_set(VKY3_B_TEXT_MATRIX + offset, VKY3_B_COLOR_MATRIX + offset, c, a2560k_b_color, a2560k_b_region.size.width, 1);
     }
 }
 
