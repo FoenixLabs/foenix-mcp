@@ -28,8 +28,9 @@ A2560X, A2560U (68000 and 65816), and GenX.]
 ## Building
 
 Please refer to processor specific building instructions that will be included.
-For the 65816 and 68000 computers, the project will be built using the VBCC
-compiler.
+Since 2.1.0 the MCP is built with the [Calypsi](https://www.calypsi.cc/)
+compiler, see "Building with Calypsi" below. For now only the A2560K K25 / K40
+image is made; the other images follow when all versions are released again.
 
 ### Building for the M68000 CPU Family
 
@@ -423,11 +424,62 @@ really says (`DIP_HIRES`, `MODE_1024`). On a fixed MCP with the DIP switch on,
 you see `MODE_1024=1 -> 1280x1024`, and 200 is the last number at the
 bottom of the screen.
 
+### Building with Calypsi (2.1.0)
+
+The MCP is built with Calypsi (`cc68k`, `as68k`, `ln68k`, version 5.18.4 or
+newer); it is needed to build FELINC into the MCP. Only the A2560K K25 / K40
+in flash block 1 has Calypsi linker rules so far
+(`src/calypsi/a2560k_flash_b1.scm`). `COMPILER=vbcc` still builds with VBCC,
+as before 2.1.0 (see "Building on a Mac").
+
+Calypsi runs on Linux here (the Mac version does not work for this project).
+On the Linux computer:
+
+```
+cd src
+make UNIT=a2560k BLOCK=1 clean
+make UNIT=a2560k BLOCK=1 CACHE=1
+```
+
+The link step gives two raw files, which `tools/calypsi_image.py` puts into
+the 512 KB image `src/foenixmcp.bin`, the same as with VBCC.
+
+**Compiler checks.** Before the image is made, `tools/calypsi_check.py` reads
+the list files (`.lst`) for code that Calypsi is known to get wrong, and stops
+the build if it finds some. It knows which problem is fixed in which version
+of the compiler:
+
+| Problem | Fixed in |
+|---|---|
+| a 16-bit index multiplied in place (`mulu.w` / `muls.w`) | 5.18.3 |
+| a bit test on a long read from the wrong address (`move.w <mem>,ccr`) | 5.18.4 |
+| `*reg = *reg \| bit` on a 32-bit I/O register made into a byte `bset.b` / `bclr.b` | not yet |
+
+Also not fixed yet: a comparison of two constants inside `&&` in an `if`
+(`if (MACRO != 0 && x)`) is compiled the wrong way round. The MCP uses
+`#if` for such compile-time switches.
+
+**Speed.** In a large function Calypsi keeps loop values on the stack, and it
+inlines a small function from the same file back into its caller (it ignores
+`noinline`). That is why the inner loops of the text screen drivers are in a
+file of their own, `src/dev/txt_cells.c`. With that, `tests/cachebench` (caches
+on) gives the same times for both compilers:
+
+| Test | VBCC | Calypsi |
+|---|---|---|
+| loop | 1033 ms | 1033 ms |
+| read | 133 ms | 133 ms |
+| sieve | 933 ms | 933 ms |
+| memory | 3466 ms | 3466 ms |
+| screen | 3583 ms | 3683 ms |
+
+Calypsi's image is also about 14% smaller.
+
 ### Building on a Mac
 
-The MCP is built with VBCC: the `vc` front end, the `vbccm68k` compiler, the
-`vasmm68k_mot` assembler and the `vlink` linker. Calypsi is not used for the
-68040 version.
+On a Mac the MCP is built with VBCC: the `vc` front end, the `vbccm68k`
+compiler, the `vasmm68k_mot` assembler and the `vlink` linker. Add
+`COMPILER=vbcc` to every `make`, since Calypsi is the default (see above).
 
 #### 1. Install the VBCC tools (once)
 
@@ -475,7 +527,7 @@ The generated `.c` file is not kept in git (see `.gitignore`).
 cd src
 export VBCC=$PWD/../vbcc            # the vbcc folder of this repository
 export PATH=~/opt/vbcc/bin:$PATH    # the VBCC programs
-make UNIT=a2560k BLOCK=1
+make UNIT=a2560k BLOCK=1 COMPILER=vbcc
 ```
 
 The result is `src/foenixmcp.bin`, padded to 512 KB: the image for flash
@@ -498,11 +550,13 @@ Make settings for the other images:
 | A2560X | `UNIT=a2560x` |
 | GenX | `UNIT=genx` |
 | any of these with the CPU caches on | add `CACHE=1` |
+| any of these with VBCC | add `COMPILER=vbcc` (the K60, A2560X and GenX have no Calypsi linker rules yet) |
 
 **All images at once:** `tools/build_release.sh` builds every machine twice
 (caches off and on), each from clean, into `release/<version>/`, with a
 `SHA256SUMS.txt` and a build log per image. It finds the VBCC programs on the
-PATH or in `~/opt/vbcc/bin`. The A2560U is not in the list: its 68000 version
+PATH or in `~/opt/vbcc/bin`. Since 2.1.0 it is not used: it builds with
+VBCC, and it will be brought up to date when all images are released again. The A2560U is not in the list: its 68000 version
 does not build from this source tree yet.
 
 A Mac build works the same as a Windows build, but the two images are not
