@@ -265,12 +265,12 @@ static char * setting_or_default(short index) {
 }
 
 /*
- * print_ip - print an IPv4 address
+ * net_print_ip - print an IPv4 address
  *
  * Input:  channel = where, ip = the address (a.b.c.d with a in the top byte)
  * Output: none
  */
-static void print_ip(short channel, uint32_t ip) {
+void net_print_ip(short channel, uint32_t ip) {
     char text[16];
     sprintf(text, "%u.%u.%u.%u", (unsigned)(ip >> 24), (unsigned)((ip >> 16) & 0xFF),
             (unsigned)((ip >> 8) & 0xFF), (unsigned)(ip & 0xFF));
@@ -340,7 +340,7 @@ short net_start(short channel) {
 
     if (!dhcp) {
         print(channel, "Network on: ");
-        print_ip(channel, felinc_get_ip());
+        net_print_ip(channel, felinc_get_ip());
         print(channel, "\n");
         net_unlock();
         return 0;
@@ -353,7 +353,7 @@ short net_start(short channel) {
         felinc_poll();
     }
     if (felinc_get_ip() != 0) {
-        print_ip(channel, felinc_get_ip());
+        net_print_ip(channel, felinc_get_ip());
         print(channel, "\n");
     } else {
         print(channel, "no answer yet; it keeps asking (NET shows the address).\n");
@@ -434,6 +434,44 @@ char net_tick(void) {
 }
 
 /*
+ * net_resolve - look up a name through DNS (NSLOOKUP)
+ *
+ * Input:  channel = where to print the result, name = the name (or a.b.c.d)
+ * Output: 0 if found, a negative error if not. Waits up to 10 s; FELINC's DNS retries meanwhile.
+ */
+short net_resolve(short channel, const char * name) {
+    uint32_t ip = 0;
+    int16_t result;
+    long until = timers_jiffies() + 10 * 60;
+
+    if (state != NET_STATE_ON) {
+        print(channel, "The network is off (NET ON).\n");
+        return ERR_GENERAL;
+    }
+
+    /* Ask, then let the network work between the questions: the answer comes in through
+     * felinc_poll. Each call takes the lock; the tick polls in between as well. */
+    do {
+        net_lock();
+        result = felinc_resolve(name, &ip);
+        if (result == FELINC_RESOLVE_BUSY) {
+            felinc_poll();
+        }
+        net_unlock();
+    } while (result == FELINC_RESOLVE_BUSY && state == NET_STATE_ON && timers_jiffies() < until);
+
+    print(channel, name);
+    if (result == FELINC_RESOLVE_DONE) {
+        print(channel, ": ");
+        net_print_ip(channel, ip);
+        print(channel, "\n");
+        return 0;
+    }
+    print(channel, (result == FELINC_RESOLVE_BUSY) ? ": no answer within 10 s\n" : ": not found\n");
+    return ERR_GENERAL;
+}
+
+/*
  * net_state - the state of the network
  *
  * Input:  none
@@ -460,7 +498,7 @@ void net_print_status(short channel, short list) {
     if (list == NET_LIST_STATUS) {
         print(channel, "Address: ");
         if (felinc_get_ip() != 0) {
-            print_ip(channel, felinc_get_ip());
+            net_print_ip(channel, felinc_get_ip());
         } else {
             print(channel, "none yet (DHCP)");
         }

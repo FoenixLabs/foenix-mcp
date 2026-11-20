@@ -9,6 +9,7 @@
  *   NET TCP | ARP | DNS  FELINC's lists: connections, the ARP table, the DNS cache
  *   SET NET <name> <v>   change a setting: DHCP ON|OFF, IP, MASK, GATEWAY (a.b.c.d), MAC
  *   GET NET [<name>]     show all network settings, or one
+ *   NSLOOKUP <name>      look up a name through DNS
  *
  * The settings are normally in mcp.init, for example "SET NET DHCP OFF" and "SET NET IP 10.0.0.9".
  */
@@ -152,4 +153,18 @@ short cmd_net(short channel, int argc, const char * argv[]) {
     }
     print(channel, "USAGE: NET [ON|OFF|TCP|ARP|DNS|LOG [CLEAR]]\n");
     return -1;
+}
+
+/*
+ * cmd_nslookup - the NSLOOKUP command: look up a name through DNS
+ *
+ * Input:  channel = where to print, argc/argv = NSLOOKUP <name>
+ * Output: 0 if found, an error if not
+ */
+short cmd_nslookup(short channel, int argc, const char * argv[]) {
+    if (argc != 2) {
+        print(channel, "USAGE: NSLOOKUP <name>\n");
+        return -1;
+    }
+    return net_resolve(channel, argv[1]);
 }
