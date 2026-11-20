@@ -77,4 +77,14 @@ extern short cli_cmd_set(short screen, int argc, const char * argv[]);
  */
 extern short cli_cmd_get(short screen, int argc, const char * argv[]);
 
+/**
+ * Switch the clock in the top bar on or off, or choose 12 or 24 hours (SET CLOCK and, since 2.1.0,
+ * the CLOCK command).
+ *
+ * @param channel where to print the usage when the value is wrong
+ * @param value ON, OFF, 12 or 24 (also 1 / 0)
+ * @return 0, or ERR_GENERAL for a wrong value
+ */
+extern short cli_clock_set(short channel, const char * value);
+
 #endif

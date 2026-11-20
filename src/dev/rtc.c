@@ -195,6 +195,17 @@ void rtc_clock_set_24h(short hours24) {
 }
 
 /*
+ * rtc_clock_get - is the clock in the top bar on, and how is it shown (2.1.0, for CLOCK)
+ *
+ * Input:  hours24 = set to 1 for 24 hours, 0 for 12 hours with AM / PM
+ * Output: 1 if the clock is shown, 0 if not
+ */
+short rtc_clock_get(short * hours24) {
+    *hours24 = rtc_clock_24h;
+    return rtc_clock_on;
+}
+
+/*
  * rtc_set_bar_width - the width of row 0 of a screen, from the top bar (2.1.0)
  *
  * Input:  screen = 0 or 1, width = its visible width in columns

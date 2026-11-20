@@ -114,6 +114,7 @@ extern short cmd_showint(short channel, int argc, const char * argv[]);
 extern short cmd_getjiffies(short channel, int argc, const char * argv[]);
 extern short cmd_fpu(short channel, int argc, const char * argv[]);
 extern short cmd_reboot(short channel, int argc, const char * argv[]);
+short cmd_clock(short channel, int argc, const char * argv[]);
 extern short cmd_bootsel(short channel, int argc, const char * argv[]);
 extern short cmd_save(short channel, int argc, const char * argv[]);
 extern short cmd_get_ticks(short channel, int argc, const char * argv[]);
@@ -148,6 +149,7 @@ const t_cli_command g_cli_commands[] = {
     { "BOOTSEL", "BOOTSEL [<block> <512K|1M|2M|4M>] : show what booted / reboot into a flash block (K25 FPGA build 1110+)", cmd_bootsel },
     { "CALL", "CALL <address> : execute code in supervisor mode at <address> ", mem_cmd_call },
     { "CD", "CD <path> : sets the current directory", cmd_cd },
+    { "CLOCK", "CLOCK [ON|OFF|12|24] : the time in the top bar: show it, remove it, 12 or 24 hours", cmd_clock },
     { "CLS", "CLS : clear the screen", cmd_cls },
     { "COPY", "COPY <src path> <dst path> : Copies files to destination", cmd_copy },
     { "CREDITS", "CREDITS : Print out the credits", cmd_credits },
@@ -1821,6 +1823,28 @@ short cli_start_repl(short channel, const char * init_cwd) {
         }
         return cli_repl(channel);
     }
+}
+
+/*
+ * cmd_clock - the CLOCK command (2.1.0; before this only SET CLOCK, which still works)
+ *
+ * Input:  channel = where to print, argc/argv = CLOCK [ON|OFF|12|24]
+ * Output: 0, or an error for a wrong value. Without a value it shows how the clock is set.
+ */
+short cmd_clock(short channel, int argc, const char * argv[]) {
+    short hours24;
+
+    if (argc == 1) {
+        short on = rtc_clock_get(&hours24);
+        print(channel, on ? "Clock: on, " : "Clock: off, ");
+        print(channel, hours24 ? "24 hours\n" : "12 hours\n");
+        return 0;
+    }
+    if (argc == 2) {
+        return cli_clock_set(channel, argv[1]);
+    }
+    print(channel, "USAGE: CLOCK [ON|OFF|12|24]\n");
+    return ERR_GENERAL;
 }
 
 /**
