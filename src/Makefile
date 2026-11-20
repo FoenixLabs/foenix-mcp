@@ -323,6 +323,10 @@ fatfs_obj := $(subst .c,.o,$(fat_c_src))
 cli_c_src := $(wildcard cli/*.c)
 cli_obj := $(subst .c,.o,$(cli_c_src))
 
+# 2.1.0: the network (net.c; FELINC follows)
+net_c_src := $(wildcard net/*.c)
+net_obj := $(subst .c,.o,$(net_c_src))
+
 # Base MCP files
 c_src :=  $(wildcard *.c)
 c_obj := $(subst .c,.o,$(c_src))
@@ -345,7 +349,7 @@ foenixmcp.s37: $(OBJS) $(LIBS)
 	$(LD) $(LDFLAGS) -o $@  $(subst /,$(SEP),$^)
 
 
-DEPS = $(cpu_obj) $(c_obj) $(dev_obj) $(fatfs_obj) $(snd_obj) $(cli_obj) $(SPLASHSCREEN)
+DEPS = $(cpu_obj) $(c_obj) $(dev_obj) $(fatfs_obj) $(snd_obj) $(cli_obj) $(net_obj) $(SPLASHSCREEN)
 ifeq ($(TOOLCHAIN),calypsi68k)
 	# The C library's hooks to the hardware (Calypsi only)
 	DEPS := $(DEPS) calypsi/stubs.o
