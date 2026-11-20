@@ -10,6 +10,8 @@
 #include "simpleio.h"
 #include "timers.h"
 #include "dev/txt_screen.h"
+#include "topbar.h"
+#include "net/net.h"
 
 #if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X
 #include "A2560K/vky_chan_a.h"
@@ -33,6 +35,12 @@ static short rtc_clock_width = 0;           /* visible width of row 0; the clock
 static short rtc_clock_width2 = 0;          /* 2.1.0: the same for the second screen */
 
 void rtc_handle_int();                      /* below; rtc_clock_set puts it back on the RTC interrupt */
+
+/* 2.1.0: the network's character in the top bar: the first column of the CLOCK part (see
+   rtc_net_draw). The widths of row 0 come from the top bar (rtc_set_bar_width). */
+static char rtc_net_char = ' ';
+static short rtc_bar_width = 0;             /* visible width of row 0 of the console screen */
+static short rtc_bar_width2 = 0;            /* the same for the second screen */
 
 /*
  * Draw the time in the right-hand end of the title bar, if the seconds changed
@@ -83,7 +91,8 @@ static void rtc_clock_draw() {
         len = RTC_CLOCK_LEN_12;
     }
 
-    *p++ = ' ';
+    /* In 12-hour mode the time fills the whole CLOCK part: its first column is the network's */
+    *p++ = (len == RTC_CLOCK_LEN_12) ? rtc_net_char : ' ';
     *p++ = '0' + shown / 10;
     *p++ = '0' + shown % 10;
     *p++ = ':';
@@ -186,6 +195,52 @@ void rtc_clock_set_24h(short hours24) {
 }
 
 /*
+ * rtc_set_bar_width - the width of row 0 of a screen, from the top bar (2.1.0)
+ *
+ * Input:  screen = 0 or 1, width = its visible width in columns
+ * Output: none
+ */
+void rtc_set_bar_width(short screen, short width) {
+    if (screen == 0) {
+        rtc_bar_width = width;
+    } else {
+        rtc_bar_width2 = width;
+    }
+}
+
+/*
+ * rtc_net_draw - put the network's character in the first column of the CLOCK part (2.1.0)
+ *
+ * Called from the RTC interrupt, so, like the clock, it writes straight into the text memory of
+ * row 0 (the screen driver keeps a cursor and is not safe in an interrupt). It is written at every
+ * interrupt: when the command line redraws its bar, the character is back 15 ms later.
+ *
+ * Input:  none
+ * Output: none
+ */
+static void rtc_net_draw() {
+#ifdef RTC_CLOCK_TEXT
+    static char drawn = ' ';
+
+    /* Only while there is something to show, and once more to clear it: with the network off
+     * nothing is written, so a program that uses the text memory itself is left alone */
+    if (rtc_net_char == ' ' && drawn == ' ') {
+        return;
+    }
+    drawn = rtc_net_char;
+
+    if (rtc_bar_width > TOPBAR_CLOCK_WIDTH) {
+        RTC_CLOCK_TEXT[rtc_bar_width - TOPBAR_CLOCK_WIDTH] = rtc_net_char;
+    }
+#ifdef RTC_CLOCK_TEXT2
+    if (rtc_bar_width2 > TOPBAR_CLOCK_WIDTH) {
+        RTC_CLOCK_TEXT2[rtc_bar_width2 - TOPBAR_CLOCK_WIDTH] = rtc_net_char;
+    }
+#endif
+#endif
+}
+
+/*
  * Interrupt handler for the real time clock
  */
 void rtc_handle_int() {
@@ -195,9 +250,13 @@ void rtc_handle_int() {
     
     rtc_ticks++;
 
+    /* 2.1.0: the network's turn in the background (every 15 ms), and its character in the bar */
+    rtc_net_char = net_tick();
+
     if (rtc_clock_on) {
         rtc_clock_draw();               /* 2.0.32: the title bar clock */
     }
+    rtc_net_draw();
 }
 
 /*

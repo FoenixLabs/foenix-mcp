@@ -7,7 +7,10 @@
  * its text goes to the network log (or, for NET status lists, to the screen of that command), and
  * an error inside FELINC only sets a flag, after which net_poll stops the network.
  *
- * For now FELINC runs when net_poll is called: by the command line while it waits for a key.
+ * FELINC runs when net_poll is called: by the command line while it waits for a key, by programs
+ * (felinc_poll), and in the background by net_tick, from the RTC interrupt every 15 ms. FELINC is
+ * not reentrant, so every way into it takes the lock (net_lock); the tick skips its turn while
+ * someone holds it.
  */
 
 #include <ctype.h>
@@ -229,6 +232,27 @@ static void felinc_fatal(const char * reason) {
  */
 
 static short state = NET_STATE_OFF;
+static short problem = 0;               /* 1 = the network stopped after an error (top bar) */
+
+/*
+ * The lock: a count, because a locked path can call another (a program's felinc_init starts the
+ * network). The tick only reads it, from the interrupt.
+ */
+static volatile short busy = 0;
+
+/*
+ * net_lock / net_unlock - take and give back the lock around work inside FELINC
+ *
+ * Input:  none
+ * Output: none
+ */
+void net_lock(void) {
+    busy++;
+}
+
+void net_unlock(void) {
+    busy--;
+}
 
 /*
  * setting_or_default - a setting for felinc_init
@@ -290,6 +314,7 @@ short net_start(short channel) {
         return 0;
     }
 
+    net_lock();
     felinc_set_alloc(netpool_alloc, netpool_free);
     felinc_set_print(felinc_text);
     felinc_set_fatal(felinc_fatal);
@@ -302,10 +327,14 @@ short net_start(short channel) {
         if (channel >= 0) {
             print(channel, "NET ON: the network did not start (see NET LOG).\n");
         }
+        problem = 1;
+        net_unlock();
         return ERR_GENERAL;
     }
     state = NET_STATE_ON;
+    problem = 0;
     if (channel < 0) {
+        net_unlock();
         return 0;
     }
 
@@ -313,6 +342,7 @@ short net_start(short channel) {
         print(channel, "Network on: ");
         print_ip(channel, felinc_get_ip());
         print(channel, "\n");
+        net_unlock();
         return 0;
     }
 
@@ -328,6 +358,7 @@ short net_start(short channel) {
     } else {
         print(channel, "no answer yet; it keeps asking (NET shows the address).\n");
     }
+    net_unlock();
     return 0;
 }
 
@@ -338,10 +369,12 @@ short net_start(short channel) {
  * Output: none
  */
 static void stop(const char * why) {
+    net_lock();
     felinc_shutdown();
     state = NET_STATE_OFF;
     net_log(why);
     check_pool_empty();
+    net_unlock();
 }
 
 /*
@@ -355,6 +388,7 @@ void net_stop(short channel) {
         print(channel, "The network is already off.\n");
         return;
     }
+    problem = 0;
     stop("NET OFF");
 }
 
@@ -368,12 +402,35 @@ void net_poll(void) {
     if (state != NET_STATE_ON) {
         return;
     }
+    net_lock();
     if (fatal_seen) {
         fatal_seen = 0;
+        problem = 1;
         stop("network stopped after a FELINC error");
-        return;
+    } else {
+        felinc_poll();
     }
-    felinc_poll();
+    net_unlock();
+}
+
+/*
+ * net_tick - the network's turn in the background (called by the RTC interrupt every 15 ms)
+ *
+ * Input:  none
+ * Output: the character for the top bar: ' ' off, 0xFA on without an address yet (DHCP),
+ *         0x12 on with an address, 0x13 stopped after an error
+ */
+char net_tick(void) {
+    /* Someone is inside FELINC (a system call, a NET command, the command line's poll): this
+     * interrupt came in the middle of it, so leave FELINC alone until the next tick */
+    if (state == NET_STATE_ON && busy == 0) {
+        net_poll();
+    }
+
+    if (state == NET_STATE_ON) {
+        return (felinc_get_ip() != 0) ? 0x12 : 0xFA;
+    }
+    return problem ? 0x13 : ' ';
 }
 
 /*
@@ -399,6 +456,7 @@ void net_print_status(short channel, short list) {
     if (state != NET_STATE_ON) {
         return;
     }
+    net_lock();
     if (list == NET_LIST_STATUS) {
         print(channel, "Address: ");
         if (felinc_get_ip() != 0) {
@@ -420,6 +478,7 @@ void net_print_status(short channel, short list) {
         default:           felinc_print_status(); break;
     }
     print_channel = -1;
+    net_unlock();
 }
 
 /*

@@ -83,6 +83,22 @@ extern void net_stop(short channel);
  */
 extern void net_poll(void);
 
+/**
+ * Take / give back the lock around work inside FELINC (FELINC is not reentrant; the background
+ * tick skips its turn while the lock is taken). Used by net.c and net_sys.c.
+ */
+extern void net_lock(void);
+extern void net_unlock(void);
+
+/**
+ * The network's turn in the background: called by the RTC interrupt every 15 ms. Polls FELINC
+ * when nobody else is inside it.
+ *
+ * @return the character for the top bar: ' ' off, 0xFA no address yet, 0x12 on with an address,
+ *         0x13 stopped after an error
+ */
+extern char net_tick(void);
+
 /* What net_print_status shows */
 #define NET_LIST_STATUS     0       /* address, MAC and FELINC's counters */
 #define NET_LIST_TCP        1       /* TCP connections */

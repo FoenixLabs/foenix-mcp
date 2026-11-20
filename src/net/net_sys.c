@@ -48,12 +48,14 @@ static int32_t own(int socket) {
  */
 static void close_level(uint8_t level) {
     short s;
+    net_lock();
     for (s = 0; s < FELINC_MAX_SOCKETS; s++) {
         if (socket_level[s] == level) {
             felinc_close(s);
             socket_level[s] = 0;
         }
     }
+    net_unlock();
 }
 
 /*
@@ -109,7 +111,24 @@ void net_program_reset(void) {
  * Input:  function = KFN_NET_INIT ... KFN_NET_PRINT; p0-p5 = the program's arguments
  * Output: the result for the program (FELINC's result; 32 bits)
  */
+static int32_t net_syscall_locked(int32_t function, int32_t p0, int32_t p1, int32_t p2, int32_t p3, int32_t p4);
+
 int32_t net_syscall(int32_t function, int32_t p0, int32_t p1, int32_t p2, int32_t p3, int32_t p4) {
+    int32_t result;
+
+    /* The background tick must not enter FELINC while a program is inside it */
+    net_lock();
+    result = net_syscall_locked(function, p0, p1, p2, p3, p4);
+    net_unlock();
+    return result;
+}
+
+/*
+ * net_syscall_locked - the work of net_syscall, with the lock taken
+ *
+ * Input/Output: as net_syscall
+ */
+static int32_t net_syscall_locked(int32_t function, int32_t p0, int32_t p1, int32_t p2, int32_t p3, int32_t p4) {
     switch (function) {
         case KFN_NET_INIT:
             /* The MCP's settings decide (SET NET), not the program's arguments. If the network
