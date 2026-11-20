@@ -81,4 +81,13 @@ extern void rtc_clock_set(short on);
  */
 extern void rtc_clock_set_24h(short hours24);
 
+/**
+ * 2.1.0: the visible width of row 0 of a screen (the top bar tells the RTC interrupt, which draws
+ * the clock and the network's character straight into the text memory).
+ *
+ * @param screen 0 or 1
+ * @param width the width in columns
+ */
+extern void rtc_set_bar_width(short screen, short width);
+
 #endif

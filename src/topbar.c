@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "topbar.h"
+#include "dev/rtc.h"
 #include "dev/txt_screen.h"
 
 #define TOPBAR_SCREENS      2           /* screens with a bar: 0 and 1 */
@@ -231,6 +232,7 @@ void topbar_draw(short screen, short is_active) {
     bar->drawn = 1;
 
     topbar_layout(screen, &layout);
+    rtc_set_bar_width(screen, layout.width);    /* 2.1.0: where the RTC interrupt puts the network's character */
     if (layout.width < TOPBAR_CLOCK_WIDTH + 2) {
         return;
     }
@@ -245,7 +247,8 @@ void topbar_draw(short screen, short is_active) {
         topbar_draw_user(screen, &layout);
     }
     topbar_write(screen, layout.clock_sep, 1, separator);
-    /* The clock part: empty; the RTC interrupt puts the time back at the next second */
+    /* The clock part: empty; the RTC interrupt puts the time back at the next second, and the
+       network's character (2.1.0) in its first column at the next interrupt */
     topbar_write(screen, layout.clock_sep + 1, TOPBAR_CLOCK_WIDTH, 0);
     topbar_end(screen, &saved);
 }
