@@ -154,10 +154,12 @@ endif
 
 
 # Toolchain selection ---------------------------------------------------------
-# 2.1.0: COMPILER=calypsi builds the 68k MCP with Calypsi (cc68k / as68k / ln68k, on the Linux
-# build host) instead of VBCC. VBCC stays the default until the Calypsi image is proven on the board.
+# 2.1.0: the MCP is built with Calypsi (cc68k / as68k / ln68k, on the Linux build host); it is
+# needed for FELINC in the MCP. Only the A2560K K25 / K40 in flash block 1 has Calypsi linker
+# rules so far (calypsi/a2560k_flash_b1.scm); the other images follow when they are released
+# again. COMPILER=vbcc still builds with VBCC, as before 2.1.0.
 # Switching COMPILER needs a clean build: make ... clean first (the .o files have the same names).
-COMPILER ?= vbcc
+COMPILER ?= calypsi
 ifeq ($(CPU),w65816)
 	TOOLCHAIN = calypsi
 else ifeq ($(COMPILER),calypsi)
@@ -388,7 +390,7 @@ foenixmcp.bin: $(DEPS) $(CALYPSI_RULES)
 	$(PYTHON3) ../tools/calypsi_image.py foenixmcp_vectors.raw flash.raw $@ --size $(PAD_FLASH_SIZE)
 
 $(CALYPSI_RULES):
-	@echo "COMPILER=calypsi: no linker rules $@ (only UNIT=a2560k BLOCK=1 so far)" && false
+	@echo "COMPILER=calypsi: no linker rules $@ (only UNIT=a2560k BLOCK=1 so far; use COMPILER=vbcc)" && false
 
 foenixmcp.s68:
 	@echo "COMPILER=calypsi: MEMORY=ram is not supported" && false
