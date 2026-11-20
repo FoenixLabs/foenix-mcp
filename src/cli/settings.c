@@ -487,12 +487,14 @@ short atoi_n(char * text, short n) {
 
 /*
  * CLOCK setter (2.0.32):
- *   SET CLOCK ON / OFF   show / stop the time in the right-hand end of the title bar
- *   SET CLOCK 24 / 12    show it as 16:30:05 or as 04:30:05 PM (and switch it on)
+ *   CLOCK ON / OFF   show / stop the time in the right-hand end of the title bar
+ *   CLOCK 24 / 12    show it as 16:30:05 or as 04:30:05 PM (and switch it on)
  * Upper or lower case, and 1 / 0 for ON / OFF, are accepted too.
+ * 2.1.0: CLOCK is a command of its own (cmd_clock in cli.c); SET CLOCK still works the same, so
+ * existing mcp.init files keep working.
  */
 short cli_clock_set(short channel, const char * value) {
-    const char * usage = "USAGE: SET CLOCK ON|OFF|12|24\n";
+    const char * usage = "USAGE: CLOCK ON|OFF|12|24\n";
 
     if ((toupper(value[0]) == 'O') && (toupper(value[1]) == 'N') && (value[2] == 0)) {
         rtc_clock_set(1);
@@ -1069,7 +1071,7 @@ void cli_set_init() {
 
     sys_get_info(&info);
 
-    cli_set_register("CLOCK", "CLOCK ON|OFF|12|24 -- show the time in the title bar (24 or 12 hours)", cli_clock_set, 0);
+    cli_set_register("CLOCK", "CLOCK ON|OFF|12|24 -- the same as the CLOCK command (kept for old mcp.init files)", cli_clock_set, 0);
 #if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_A2560X || MODEL == MODEL_FOENIX_GENX
     cli_set_register("BG", "BG <name>|RGBrrrgggbbb -- background colour (see SET HELP)", cli_bg_set, cli_bg_get);
 #endif

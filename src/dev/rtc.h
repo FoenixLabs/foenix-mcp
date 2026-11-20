@@ -90,4 +90,12 @@ extern void rtc_clock_set_24h(short hours24);
  */
 extern void rtc_set_bar_width(short screen, short width);
 
+/**
+ * 2.1.0: whether the clock in the top bar is on, and how it is shown (the CLOCK command).
+ *
+ * @param hours24 set to 1 for 24 hours, 0 for 12 hours with AM / PM
+ * @return 1 if the clock is shown, 0 if not
+ */
+extern short rtc_clock_get(short * hours24);
+
 #endif
