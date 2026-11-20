@@ -250,7 +250,11 @@ short fsys_opendir(const char * path) {
             fres = f_opendir(&g_directory[dir], path);
         }
         if (fres != FR_OK) {
-            /* If there was a problem, return an error number */
+            /* If there was a problem, return an error number.
+               2.1.0: and give the handle back. Before, it stayed taken, so every failed open
+               (a folder that does not exist, also silently in Tab completion) used one up,
+               and after 8 of them LS said "Out of handles". */
+            g_dir_state[dir] = 0;
             return fatfs_to_foenix(fres);
         } else {
             /* Otherwise, allocate and return the handle */
@@ -269,6 +273,32 @@ short fsys_opendir(const char * path) {
  * Returns:
  * 0 on success, negative number on error
  */
+/**
+ * 2.1.0: how many file and directory handles are in use (for SYS INFO).
+ *
+ * A handle that stays taken after a command ends is a leak: after 8 of them, opening a
+ * file or folder fails with "Out of handles".
+ *
+ * @param files set to the number of open files (of MAX_FILES)
+ * @param dirs set to the number of open directories (of MAX_DIRECTORIES)
+ * @param max_files set to MAX_FILES
+ * @param max_dirs set to MAX_DIRECTORIES
+ */
+void fsys_handles_in_use(short * files, short * dirs, short * max_files, short * max_dirs) {
+    short i;
+
+    *files = 0;
+    *dirs = 0;
+    for (i = 0; i < MAX_FILES; i++) {
+        if (g_fil_state[i]) (*files)++;
+    }
+    for (i = 0; i < MAX_DIRECTORIES; i++) {
+        if (g_dir_state[i]) (*dirs)++;
+    }
+    *max_files = MAX_FILES;
+    *max_dirs = MAX_DIRECTORIES;
+}
+
 short fsys_closedir(short dir) {
     long d = dir;                       /* long index: Calypsi 5.18 miscompiles a short index into this table (tools/calypsi_check.py) */
 
@@ -423,6 +453,7 @@ short fsys_findfirst(const char * path, const char * pattern, p_file_info file) 
     } else {
 		fres = f_findfirst(&g_directory[dir], &finfo, path, pattern);
         if (fres != FR_OK) {
+            g_dir_state[dir] = 0;       /* 2.1.0: give the handle back (see fsys_opendir) */
             return fatfs_to_foenix(fres);
 
         } else {

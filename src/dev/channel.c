@@ -116,6 +116,22 @@ p_channel chan_get_record(short c) {
 // Inputs:
 // chan = a pointer to the channel record to return to the kernel
 //
+/**
+ * 2.1.0: how many channels are in use (for SYS INFO). The console screens count too.
+ *
+ * @return the number of channels in use, of CHAN_MAX
+ */
+short chan_in_use(void) {
+    short i, n = 0;
+
+    for (i = 0; i < CHAN_MAX; i++) {
+        if (g_channels[i].number >= 0) {
+            n++;
+        }
+    }
+    return n;
+}
+
 void chan_free(p_channel chan) {
     log_num(LOG_INFO, "chan_free: ", chan->number);
 
