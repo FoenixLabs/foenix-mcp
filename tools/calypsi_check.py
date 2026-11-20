@@ -1,11 +1,19 @@
 #!/usr/bin/env python3
 """
-calypsi_check.py - find code hit by two Calypsi 5.18 code generation problems
+calypsi_check.py - find code hit by Calypsi 5.18 code generation problems
 
     calypsi_check.py FILE.lst [FILE.lst ...]
 
-Reads the compiler's list files (--list-file) and reports two kinds of trouble. The MCP build
+Reads the compiler's list files (--list-file) and reports three kinds of trouble. The MCP build
 (src/Makefile, COMPILER=calypsi) runs it after linking and stops when it finds anything.
+
+Each list file names the compiler version in its header. A check only runs for the versions
+that have the problem (2.1.0, Calypsi 5.18.4):
+  1. multiply in place       5.18 up to 5.18.2 (fixed in 5.18.3)
+  2. narrowed hardware access all versions so far (still in 5.18.4)
+  3. wrong bit test of a long 5.18 up to 5.18.3 (fixed in 5.18.4)
+Not found by this tool: a comparison of two constants inside && in an if is compiled inverted
+(still in 5.18.4). The MCP uses #if for such switches.
 
 1. Multiply in place (a compiler bug). For &table[i] with a 16-bit index i and an element
    size that is not a power of two, cc68k 5.18 multiplies the register that holds i itself
@@ -34,6 +42,13 @@ Reads the compiler's list files (--list-file) and reports two kinds of trouble. 
    sit at their own aligned address. A narrowed access to the top byte of a long (at the
    register's own address) is therefore not found. A report on a register that really is a
    byte or word wide is harmless; rewrite it the same way.
+
+3. Wrong bit test of a long. "if (x & 1)" (also & 2, & 4, & 8) with x a 32-bit value in memory
+   becomes "move.w x+4,ccr" and a branch on a flag: it reads the word after x instead of x's
+   low word at x+2. Through a pointer the same: (n+4,aN). It hit the SD driver's wait for the
+   end of a block write (2.1.0d damaged an SD card). Way around it in C: copy the value into a
+   local variable first. The tool cannot tell a long from a short in the list file, so it
+   reports every "move.w <memory>,ccr"; on a 16-bit variable it is right, so check each place.
 
 Output: one line per place (file, list line, what was found). Exit code 1 if anything was
 found, 0 if not.
@@ -170,18 +185,53 @@ def check_narrow(path):
     return reports
 
 
+VERSION = re.compile(r"Calypsi ISO C compiler.*version\s+(\d+)\.(\d+)(?:\.(\d+))?")
+CCR_FROM_MEMORY = re.compile(r"^move\.w$")
+
+
+def compiler_version(path):
+    """The compiler version from a list file's header, as a tuple (5, 18, 4), or None for an
+    assembler list file or an unknown header (then every check runs)."""
+    with open(path, errors="replace") as f:
+        for _ in range(10):
+            m = VERSION.search(f.readline())
+            if m:
+                return (int(m.group(1)), int(m.group(2)), int(m.group(3) or 0))
+    return None
+
+
+def check_ccr(path):
+    """Report every 16-bit move from memory into the condition codes (bit test of a long)."""
+    with open(path, errors="replace") as f:
+        lines = f.read().split("\n")
+    reports = []
+    for n, line in enumerate(lines):
+        m = INSN.match(line)
+        if not m or not CCR_FROM_MEMORY.match(m.group(1)):
+            continue
+        ops = operands(m.group(2))
+        if len(ops) == 2 and ops[1] == "ccr" and not re.fullmatch(r"d[0-7]", ops[0]):
+            reports.append("%s:%d: bit test read from memory (right only for a 16-bit value): %s"
+                           % (path, n + 1, line.strip()))
+    return reports
+
+
 def main():
     """Check every list file named on the command line. Returns the exit code."""
     found = []
     for path in sys.argv[1:]:
-        found += check(path)
-        found += check_narrow(path)
+        version = compiler_version(path)
+        if version is None or version < (5, 18, 3):
+            found += check(path)            # multiply in place: fixed in 5.18.3
+        found += check_narrow(path)         # narrowed hardware access: not fixed yet
+        if version is not None and version < (5, 18, 4):
+            found += check_ccr(path)        # wrong bit test of a long: fixed in 5.18.4
     for r in found:
         print(r)
     if found:
         print("calypsi_check: %d place(s) to check (see tools/calypsi_check.py)" % len(found))
         return 1
-    print("calypsi_check: no multiply-in-place or narrowed I/O access found")
+    print("calypsi_check: nothing found (checks per compiler version, see tools/calypsi_check.py)")
     return 0
 
 
