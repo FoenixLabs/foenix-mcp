@@ -78,6 +78,108 @@ This copy of the MCP is maintained for the A2560K Gen1, tested on the
 A2560K25 ("A2560Kc"). The flash images for the K25 and the K40 are the same
 build: the MCP finds out at start-up which board it runs on.
 
+### Version 2.1.0: the network in the MCP
+
+The MCP has a TCP/IP stack built in: [FELINC](https://gitlab.com/renekint/felinc),
+the stack for the A2560K's LAN9221 Ethernet chip. It runs in the background, and
+programs share it through system calls, so a program no longer needs its own copy.
+
+**Starting it.** `NET ON` starts the network: with DHCP (the default) it waits up
+to 10 seconds and shows the address it got. `NET OFF` stops it again and gives
+back all its memory; `NET ON` then works again without a restart. A program that
+uses the network starts it by itself if it is off.
+
+**Settings.** Normally in `mcp.init`; they are used at the next `NET ON`:
+
+```
+SET NET DHCP OFF
+SET NET IP 10.77.77.99
+SET NET MASK 255.255.255.0
+SET NET GATEWAY 10.77.77.1
+NET ON
+```
+
+- `DHCP` is `ON` by default. With DHCP, `IP`, `MASK` and `GATEWAY` are the
+  fall-back: used when no DHCP server answers within a minute.
+- `SET NET MAC 00:0D:80:61:94:AB` sets the MAC address.
+- `DEFAULT` as the value puts a setting back to FELINC's own value.
+- `GET NET` lists the settings, `GET NET IP` shows one.
+
+**Commands.**
+
+| Command | What it does |
+|---|---|
+| `NET` | on or off, address and MAC, FELINC's counters, the settings, the network pool |
+| `NET ON` / `NET OFF` | start / stop the network |
+| `NET TCP` / `NET ARP` / `NET DNS` | FELINC's lists: TCP connections, the ARP table, the DNS cache |
+| `NET LOG` / `NET LOG CLEAR` | the network log (see below) / empty it |
+| `NSLOOKUP <name>` | the address of a name, through DNS |
+
+**The top bar.** The first column of the clock part shows the network:
+
+| Character | Meaning |
+|---|---|
+| (blank) | off |
+| `·` | on, still asking for an address (DHCP) |
+| `↕` | on, with an address |
+| `‼` | stopped after an error: see `NET LOG` |
+
+**The network log.** The network runs while programs own the screen, so it
+never prints there by itself. Its messages (DHCP lease, renewals, errors) go to
+the network log, a ring of 4 KB with the time in front of each line: `NET LOG`.
+
+**In the background.** Every 15 ms the RTC interrupt gives the network a turn,
+so the board answers ping and renews its DHCP lease while a program is busy.
+The command line, and programs through `felinc_poll`, also give it turns, for
+speed. Measured on the K25 with the CPU caches on, from a computer on the same
+wired network: TFTP through the MCP's network 138 KB/s put and 158 KB/s get
+(1 MB); a ping flood of 1000-byte packets without loss, with the command line
+working normally meanwhile. (Measure from a wired computer: over a slower link
+the TFTP figures drop by half, because TFTP waits for an answer after every
+512 bytes.)
+
+**Memory.** At start-up the MCP takes 128 KB for the network from the top of
+system RAM: `$0038_0000` - `$0039_FFFF`. The top of memory for programs is
+therefore `$0038_0000` (`SYS INFO` shows it, and the pool's use). Calypsi
+programs keep their data below `$0038_0000` and VBCC programs below
+`$0032_0000`, so no program is affected. FELINC needs about 25 KB, plus twice
+the buffer size a program asks for per socket or TCP connection: 128 KB holds
+for example 6 TCP connections with 8 KB buffers. `TEST NETPOOL` checks the
+pool's allocator (with the network off).
+
+**For programs.** Link with FELINC's `felinc_mcp.a` (FELINC v0.11 or later)
+instead of `felinc.a`, with the same `felinc.h`: every `felinc_*` function then
+becomes a system call to the MCP's FELINC, and the program shrinks (FELINC_TFTP:
+11 KB instead of 33 KB). Differences with a program's own FELINC:
+
+- `felinc_init` starts the network with the MCP's settings if it is off (its
+  own MAC and IP arguments are not used) and returns at once: poll until
+  `felinc_get_ip()` is not 0, as before. The network stays on afterwards.
+- `felinc_shutdown` closes only the program's own sockets.
+- When a program ends, the MCP closes the sockets it left open, also after a
+  crash. A program started by another program only closes its own.
+- `felinc_set_alloc`, `felinc_set_print` and `felinc_set_fatal` do nothing.
+
+**A program linked with `felinc.a` (its own FELINC) must not run while the
+network is on**: both would drive the same LAN chip. Use `NET OFF` first, or
+link the program again with `felinc_mcp.a`.
+
+The system calls are `0x80` - `0x8F` (`KFN_NET_*` in `src/include/syscalls.h`),
+one per `felinc_*` function, with the arguments in the order of `felinc.h`;
+`0x8E` gives the address, the NTP server, the MAC and the counters, and `0x8F`
+prints FELINC's lists on the program's screen. `tests/nettest` calls them
+directly.
+
+**For developers.** `src/net/felinc` is an unchanged copy of a tagged FELINC
+version (see its `README.md`); changes go to FELINC itself. It is built as
+FELINC's own Makefile does: unsigned `char`, no `-O2`. `src/net/net.c` connects
+it to the MCP: memory from the network pool (`src/netpool.c`), text to the
+network log, errors that only stop the network. One lock keeps the background
+tick out of FELINC while a system call or a command is inside it. Found on the
+way: the MCP's own `strtok_r` (not the standard one) replaced the C library's,
+so the library's `strtok` gave FELINC a garbage MAC address; it is now called
+`mcp_strtok_r`.
+
 ### Version 2.0.34: a usable command line, LS and a small VI
 
 **Programs in any folder.** The loader looked for the file's extension in the

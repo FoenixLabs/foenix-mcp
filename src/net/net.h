@@ -114,6 +114,23 @@ extern char net_tick(void);
 extern void net_print_status(short channel, short list);
 
 /**
+ * Look up a name through DNS and print its address (the NSLOOKUP command). Waits up to 10 s.
+ *
+ * @param channel where to print
+ * @param name the name, like "gitlab.com"
+ * @return 0 if found, a negative error if not (or the network is off)
+ */
+extern short net_resolve(short channel, const char * name);
+
+/**
+ * Print an IPv4 address as a.b.c.d.
+ *
+ * @param channel where to print
+ * @param ip the address (a in the top byte)
+ */
+extern void net_print_ip(short channel, uint32_t ip);
+
+/**
  * The state of the network.
  *
  * @return NET_STATE_OFF or NET_STATE_ON

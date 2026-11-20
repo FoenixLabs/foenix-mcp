@@ -22,4 +22,9 @@ extern short net_cmd_set(short channel, int argc, const char * argv[]);
  */
 extern short net_cmd_get(short channel, int argc, const char * argv[]);
 
+/**
+ * The NSLOOKUP command: NSLOOKUP <name>.
+ */
+extern short cmd_nslookup(short channel, int argc, const char * argv[]);
+
 #endif
