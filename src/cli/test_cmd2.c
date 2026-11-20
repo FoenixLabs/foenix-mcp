@@ -33,6 +33,7 @@
 #include "uart_reg.h"
 #include "gabe_reg.h"
 #include "vicky_general.h"
+#include "netpool.h"
 
 #if MODEL == MODEL_FOENIX_A2560K
 #include "dev/kbd_mo.h"
@@ -62,6 +63,127 @@ short kbd_break() {
     return sys_chan_ioctrl(0, 5, 0, 0);
 }
 #endif
+
+/*
+ * cli_test_netpool - check the network pool allocator (2.1.0, see netpool.h)
+ *
+ * Takes blocks of different sizes, fills each with its own pattern, gives them back in a mixed
+ * order and checks that the pool joins the free blocks again, until it is one free block.
+ * Run it while the network is off: it needs the whole pool.
+ *
+ * Input:  channel = where to print; no arguments
+ * Output: 0 if every check passed, -1 if one failed
+ */
+static short netpool_check_fill(uint8_t * block, size_t size, uint8_t value) {
+    size_t i;
+    for (i = 0; i < size; i++) {
+        if (block[i] != value) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+short cli_test_netpool(short channel, int argc, const char * argv[]) {
+    static const size_t sizes[6] = {100, 1472, 8192, 8192, 3, 16000};
+    uint8_t * blocks[6];
+    char buffer[100];
+    t_netpool_info info;
+    short failed = 0;
+    short i;
+    uint16_t bad_before;
+    void * big;
+
+    netpool_info(&info);
+    sprintf(buffer, "Pool: %lu bytes at 0x%08lX, used %lu, largest free %lu\n",
+        (unsigned long)info.size, (unsigned long)info.start, (unsigned long)info.used, (unsigned long)info.largest_free);
+    print(channel, buffer);
+    if (info.start == 0 || info.used != 0) {
+        print(channel, "FAIL: no pool, or the pool is in use (network on?)\n");
+        return -1;
+    }
+    bad_before = info.bad_frees;
+
+    /* 1. take six blocks and fill them */
+    for (i = 0; i < 6; i++) {
+        blocks[i] = (uint8_t *)netpool_alloc(sizes[i]);
+        if (blocks[i] == 0 || ((uint32_t)blocks[i] & 3) != 0 ||
+            (uint32_t)blocks[i] < info.start || (uint32_t)blocks[i] + sizes[i] > info.start + info.size) {
+            sprintf(buffer, "FAIL: block %d (%lu bytes) at 0x%08lX\n", i, (unsigned long)sizes[i], (unsigned long)blocks[i]);
+            print(channel, buffer);
+            return -1;
+        }
+        memset(blocks[i], 0x11 * (i + 1), sizes[i]);
+    }
+
+    /* 2. no block overwrote another */
+    for (i = 0; i < 6; i++) {
+        if (netpool_check_fill(blocks[i], sizes[i], 0x11 * (i + 1))) {
+            sprintf(buffer, "FAIL: block %d was overwritten\n", i);
+            print(channel, buffer);
+            failed = 1;
+        }
+    }
+    netpool_info(&info);
+    sprintf(buffer, "6 blocks taken: used %lu in %u blocks, largest free %lu\n",
+        (unsigned long)info.used, (unsigned)info.blocks_used, (unsigned long)info.largest_free);
+    print(channel, buffer);
+
+    /* 3. give back 2 and 4, then 3 between them: the three must become one free block, which a
+     *    request of their total size (minus headers) then gets */
+    netpool_free(blocks[2]);
+    netpool_free(blocks[4]);
+    netpool_free(blocks[3]);
+    big = netpool_alloc(8192 + 8192);
+    if (big != (void *)blocks[2]) {
+        print(channel, "FAIL: the freed blocks 2-4 were not joined\n");
+        failed = 1;
+    }
+    netpool_free(big);
+
+    /* 4. the other blocks are untouched */
+    if (netpool_check_fill(blocks[0], sizes[0], 0x11) || netpool_check_fill(blocks[1], sizes[1], 0x22) ||
+        netpool_check_fill(blocks[5], sizes[5], 0x66)) {
+        print(channel, "FAIL: a block in use was overwritten\n");
+        failed = 1;
+    }
+
+    /* 5. too big, and calloc */
+    if (netpool_alloc(NETPOOL_SIZE) != 0) {
+        print(channel, "FAIL: a block as big as the pool was given\n");
+        failed = 1;
+    }
+    big = netpool_calloc(100, 20);
+    if (big == 0 || netpool_check_fill((uint8_t *)big, 2000, 0)) {
+        print(channel, "FAIL: calloc\n");
+        failed = 1;
+    }
+    netpool_free(big);
+
+    /* 6. wrong frees are ignored: the middle of a block, and a block freed twice */
+    netpool_free(blocks[1] + 4);
+    netpool_free(blocks[2]);
+    netpool_info(&info);
+    if (info.bad_frees != bad_before + 2) {
+        print(channel, "FAIL: a wrong free was not caught\n");
+        failed = 1;
+    }
+
+    /* 7. give back the rest: one free block again */
+    netpool_free(blocks[0]);
+    netpool_free(blocks[5]);
+    netpool_free(blocks[1]);
+    netpool_info(&info);
+    sprintf(buffer, "All given back: used %lu, largest free %lu\n", (unsigned long)info.used, (unsigned long)info.largest_free);
+    print(channel, buffer);
+    if (info.used != 0 || info.largest_free != info.size - 8) {
+        print(channel, "FAIL: the pool is not one free block again\n");
+        failed = 1;
+    }
+
+    print(channel, failed ? "NETPOOL: FAILED\n" : "NETPOOL: all checks passed\n");
+    return failed ? -1 : 0;
+}
 
 /*
  * Test the PS/2 keyboard
@@ -1614,6 +1736,7 @@ const t_cli_test_feature cli_test_features[] = {
 #if HAS_OPM
     {"OPM", "OPM [EXT|INT]: test the OPM sound chip", opm_test},
 #endif
+    {"NETPOOL", "NETPOOL: check the network pool allocator (network off)", cli_test_netpool},
     {"PANIC", "PANIC: test the kernel panic mechanism", cli_test_panic},
     {"PS2", "PS2: test the PS/2 keyboard", cli_test_ps2},
     {"PSG", "PSG [EXT|INTL|INTR|INTS]: test the PSG sound chip", psg_test},
