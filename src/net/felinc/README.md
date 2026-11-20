@@ -1,8 +1,13 @@
 # FELINC in the MCP
 
 These files are a copy of the FELINC library (the TCP/IP stack for the A2560K),
-**FELINC v0.10** (tag `v0.10`, commit `f57a3bb`, gitlab.com/renekint/felinc):
+**FELINC v0.12** (tag `v0.12`, commit `0924b4c`, gitlab.com/renekint/felinc):
 the files of `LIB_SRCS` in FELINC's Makefile with their headers.
+
+Since v0.10 only `dhcp.c` changed (v0.12: after a restart in the same run,
+NET OFF / NET ON in the MCP, the DHCP request asks for the previous address
+again, so the router does not hand out a new one). v0.11 only added the stub
+library `felinc_mcp.a` for programs, which the MCP does not use.
 
 Do not change them here. Changes go to FELINC itself; then copy the files of
 the new tagged version over these and update this note.
