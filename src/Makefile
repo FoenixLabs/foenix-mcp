@@ -296,11 +296,11 @@ cpu_obj := $(subst .c,.o,$(cpu_c_src)) $(subst .s,.o,$(cpu_s_src))
 dev_c_src = block.c channel.c console.c fsys.c pata.c ps2.c rtc.c sdc_new.c txt_screen.c uart.c
 dev_s_src =
 ifeq ($(UNIT),a2560k)
-	dev_c_src := $(dev_c_src) fdc.c kbd_mo.c lpt.c midi.c txt_a2560k_a.c txt_a2560k_b.c superio.c
+	dev_c_src := $(dev_c_src) fdc.c kbd_mo.c lpt.c midi.c txt_a2560k_a.c txt_a2560k_b.c txt_cells.c superio.c
 else ifeq ($(UNIT),genx)
-	dev_c_src := $(dev_c_src) fdc.c lpt.c midi.c txt_a2560k_a.c txt_a2560k_b.c superio.c
+	dev_c_src := $(dev_c_src) fdc.c lpt.c midi.c txt_a2560k_a.c txt_a2560k_b.c txt_cells.c superio.c
 else ifeq ($(UNIT),a2560x)
-	dev_c_src := $(dev_c_src) fdc.c lpt.c midi.c txt_a2560k_a.c txt_a2560k_b.c superio.c
+	dev_c_src := $(dev_c_src) fdc.c lpt.c midi.c txt_a2560k_a.c txt_a2560k_b.c txt_cells.c superio.c
 else ifeq ($(UNIT),a2560u)
 	dev_c_src := $(dev_c_src) txt_a2560u.o
 endif
