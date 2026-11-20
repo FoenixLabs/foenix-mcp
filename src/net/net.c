@@ -272,9 +272,11 @@ static void check_pool_empty(void) {
 }
 
 /*
- * net_start - start the network (NET ON)
+ * net_start - start the network (NET ON, or a program's felinc_init)
  *
- * Input:  channel = the console of the NET ON command
+ * Input:  channel = the console of the NET ON command; -1 for a program's felinc_init: then
+ *         nothing is printed (the screen is the program's) and it does not wait for DHCP (the
+ *         program polls until it has an address, as with its own FELINC)
  * Output: 0, or a negative error
  */
 short net_start(short channel) {
@@ -282,7 +284,9 @@ short net_start(short channel) {
     short dhcp = (strcmp(setting_values[NET_SET_DHCP], "ON") == 0);
 
     if (state == NET_STATE_ON) {
-        print(channel, "The network is already on.\n");
+        if (channel >= 0) {
+            print(channel, "The network is already on.\n");
+        }
         return 0;
     }
 
@@ -291,14 +295,19 @@ short net_start(short channel) {
     felinc_set_fatal(felinc_fatal);
     fatal_seen = 0;
 
-    net_log("NET ON");
+    net_log((channel >= 0) ? "NET ON" : "network on (started by a program)");
     if (!felinc_init(setting_or_default(NET_SET_MAC), dhcp ? true : false, setting_or_default(NET_SET_IP),
                      setting_or_default(NET_SET_MASK), setting_or_default(NET_SET_GATEWAY))) {
         check_pool_empty();
-        print(channel, "NET ON: the network did not start (see NET LOG).\n");
+        if (channel >= 0) {
+            print(channel, "NET ON: the network did not start (see NET LOG).\n");
+        }
         return ERR_GENERAL;
     }
     state = NET_STATE_ON;
+    if (channel < 0) {
+        return 0;
+    }
 
     if (!dhcp) {
         print(channel, "Network on: ");

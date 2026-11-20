@@ -136,6 +136,28 @@
 #define KFN_TXT_TOPBAR          0x73    /* 2.1.0: put a program's text in the top bar */
 
 /*
+ * 2.1.0: the network (FELINC in the MCP, see src/net/net_sys.c). Programs normally do not use
+ * these numbers themselves: FELINC's stub library felinc_mcp.a turns the felinc_* functions of
+ * felinc.h into these calls. Arguments in the order of the felinc_* function.
+ */
+#define KFN_NET_INIT            0x80    /* felinc_init: start the network if it is off (SET NET settings) */
+#define KFN_NET_SHUTDOWN        0x81    /* felinc_shutdown: close the program's sockets; the network stays on */
+#define KFN_NET_POLL            0x82    /* felinc_poll */
+#define KFN_NET_SOCKET          0x83    /* felinc_socket */
+#define KFN_NET_BIND            0x84    /* felinc_bind */
+#define KFN_NET_CLOSE           0x85    /* felinc_close */
+#define KFN_NET_RECVFROM        0x86    /* felinc_recvfrom */
+#define KFN_NET_SENDTO          0x87    /* felinc_sendto */
+#define KFN_NET_LISTEN          0x88    /* felinc_listen */
+#define KFN_NET_ACCEPT          0x89    /* felinc_accept */
+#define KFN_NET_CONNECT         0x8A    /* felinc_connect */
+#define KFN_NET_RECV            0x8B    /* felinc_recv */
+#define KFN_NET_SEND            0x8C    /* felinc_send */
+#define KFN_NET_RESOLVE         0x8D    /* felinc_resolve */
+#define KFN_NET_INFO            0x8E    /* (what, out): 0 get_ip, 1 get_ntp_server, 2 get_mac (6 bytes to out), 3 get_stats */
+#define KFN_NET_PRINT           0x8F    /* (which): 0 print_status, 1 print_tcp, 2 print_arp, 3 print_dns, to the program's screen */
+
+/*
  * Call into the kernel (provided by assembly)
  */
 extern ASMCALL int32_t syscall(int32_t function, ...);

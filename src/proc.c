@@ -19,6 +19,7 @@
 #include <string.h>
 #include "dev/channel.h"
 #include "topbar.h"
+#include "net/net_sys.h"
 
 static const long k_default_stack = 0x00010000;     /* For now... we're just going to put the user stack under 0x00010000 */
 static int g_proc_result;
@@ -157,7 +158,10 @@ short proc_run(const char * path, int argc, char * argv[]) {
             proc_full_path(path, full);
             topbar_set_app(screen, full, 1);
 
+            /* 2.1.0: the sockets the program leaves open are closed when it ends */
+            net_program_start();
             proc_exec(start, k_default_stack, argc, argv);
+            net_program_end();
 
             topbar_set_user(screen, 0);
             topbar_set_app(screen, before, 0);
