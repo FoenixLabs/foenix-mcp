@@ -7,6 +7,7 @@
 #include "log.h"
 #include "types.h"
 #include "syscalls.h"
+#include "net/net_sys.h"
 #include "interrupt.h"
 #include "memory.h"
 #include "proc.h"
@@ -367,6 +368,10 @@ ASMCALL unsigned long syscall_dispatch(int32_t function, int32_t param0, int32_t
                     return ERR_GENERAL;
             }
             break;
+
+        case 0x80:
+            /* 2.1.0: the network (FELINC in the MCP), see net/net_sys.c */
+            return net_syscall(function, param0, param1, param2, param3, param4);
 
         default:
             break;

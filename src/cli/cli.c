@@ -26,6 +26,7 @@
 #include "cli/mem_cmds.h"
 #include "cli/net_cmds.h"
 #include "net/net.h"
+#include "net/net_sys.h"
 #include "cli/settings.h"
 #include "topbar.h"
 #include "memory.h"
@@ -1825,6 +1826,9 @@ short cli_start_repl(short channel, const char * init_cwd) {
  * Reactivate the CLI's read-eval-print loop after a command has completed
  */
 void cli_rerepl() {
+    /* 2.1.0: a program that crashed did not reach its normal end: close its sockets here */
+    net_program_reset();
+
     // Start up the command shell
     cli_command_get(cli_command_path);
     if (cli_command_path[0] != 0) {
