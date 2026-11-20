@@ -14,14 +14,16 @@
 #define max(x, y)   ((x < y) ? y : x)
 
 /**
- * Re-entrant version of strtok_r, because VBCC does not provide it
+ * Re-entrant version of strtok_r, because VBCC does not provide it. Not the standard strtok_r:
+ * it ignores source and goes on from *saveptr (see utilities.c; renamed in 2.1.0 so it no
+ * longer replaces the C library's strtok_r)
  *
  * @param source the string to tokenize
  * @param delimiter the string containing the delimiter
  * @param saveptr a pointer to the character pointer to use to save the state of the tokenizer
  * @return the pointer to the next token, 0 if none
  */
-extern char * strtok_r(char * source, const char * delimiter, char ** saveptr);
+extern char * mcp_strtok_r(char * source, const char * delimiter, char ** saveptr);
 
 /**
  * Perform a case-insensitive string comparison

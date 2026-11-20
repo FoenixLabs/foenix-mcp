@@ -6,6 +6,7 @@
  *   NET                  the state of the network, its settings and the network pool
  *   NET ON | OFF         start or stop the network
  *   NET LOG [CLEAR]      show (or empty) the network log
+ *   NET TCP | ARP | DNS  FELINC's lists: connections, the ARP table, the DNS cache
  *   SET NET <name> <v>   change a setting: DHCP ON|OFF, IP, MASK, GATEWAY (a.b.c.d), MAC
  *   GET NET [<name>]     show all network settings, or one
  *
@@ -102,6 +103,7 @@ static void net_status(short channel) {
     short index;
 
     print(channel, (net_state() == NET_STATE_ON) ? "Network: on\n" : "Network: off\n");
+    net_print_status(channel, NET_LIST_STATUS);
     print(channel, "Settings (SET NET <name> <value>, used at NET ON):\n");
     for (index = 0; index < NET_SET_COUNT; index++) {
         print_setting(channel, index);
@@ -134,11 +136,20 @@ short cmd_net(short channel, int argc, const char * argv[]) {
         net_log_print(channel);
         return 0;
     }
+    if (argc == 2 && (strcicmp(argv[1], "TCP") == 0 || strcicmp(argv[1], "ARP") == 0 || strcicmp(argv[1], "DNS") == 0)) {
+        if (net_state() != NET_STATE_ON) {
+            print(channel, "The network is off.\n");
+            return -1;
+        }
+        net_print_status(channel, (strcicmp(argv[1], "TCP") == 0) ? NET_LIST_TCP :
+                                  (strcicmp(argv[1], "ARP") == 0) ? NET_LIST_ARP : NET_LIST_DNS);
+        return 0;
+    }
     if (argc == 3 && strcicmp(argv[1], "LOG") == 0 && strcicmp(argv[2], "CLEAR") == 0) {
         net_log_clear();
         print(channel, "Network log cleared.\n");
         return 0;
     }
-    print(channel, "USAGE: NET [ON|OFF|LOG [CLEAR]]\n");
+    print(channel, "USAGE: NET [ON|OFF|TCP|ARP|DNS|LOG [CLEAR]]\n");
     return -1;
 }

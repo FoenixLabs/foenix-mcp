@@ -231,7 +231,7 @@ short uart_open(p_channel chan, const uint8_t * spec, short mode) {
 
     // Get the first token
     saveptr = spec_copy;
-    token = strtok_r(spec_copy, ",", &saveptr);
+    token = mcp_strtok_r(spec_copy, ",", &saveptr);
     if (token) {
         // Parse the bit rate token
         i = atoi(token);
@@ -278,7 +278,7 @@ short uart_open(p_channel chan, const uint8_t * spec, short mode) {
         uart_setbps(cdev_to_uart(chan->dev), bps_code);
 
         // Get the next token
-        token = strtok_r(spec_copy, ",", &saveptr);
+        token = mcp_strtok_r(spec_copy, ",", &saveptr);
         if (token) {
             // Parse the data bit count
             i = atoi(token);
@@ -305,7 +305,7 @@ short uart_open(p_channel chan, const uint8_t * spec, short mode) {
             }
 
             // Get the next token
-            token = strtok_r(spec_copy, ",", &saveptr);
+            token = mcp_strtok_r(spec_copy, ",", &saveptr);
             if (token) {
                 // Parse the stop bit count (1 or 2)
                 i = atoi(token);
@@ -319,7 +319,7 @@ short uart_open(p_channel chan, const uint8_t * spec, short mode) {
                 }
 
                 // Get the next token
-                token = strtok_r(spec_copy, ",", &saveptr);
+                token = mcp_strtok_r(spec_copy, ",", &saveptr);
                 if (token) {
                     // NONE, ODD, EVEN, MARK, or SPACE
                     if (strcmp(token, "NONE") == 0) {

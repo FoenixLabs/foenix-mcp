@@ -78,6 +78,26 @@ extern short net_start(short channel);
 extern void net_stop(short channel);
 
 /**
+ * Let the network do its work (received frames, timers, DHCP). Call it often while the network
+ * is on; it does nothing when the network is off. Stops the network after an error inside FELINC.
+ */
+extern void net_poll(void);
+
+/* What net_print_status shows */
+#define NET_LIST_STATUS     0       /* address, MAC and FELINC's counters */
+#define NET_LIST_TCP        1       /* TCP connections */
+#define NET_LIST_ARP        2       /* the ARP table */
+#define NET_LIST_DNS        3       /* the DNS cache */
+
+/**
+ * Show the network's address and one of FELINC's lists (only while the network is on).
+ *
+ * @param channel the screen of the NET command that asks for it
+ * @param list NET_LIST_STATUS, NET_LIST_TCP, NET_LIST_ARP or NET_LIST_DNS
+ */
+extern void net_print_status(short channel, short list);
+
+/**
  * The state of the network.
  *
  * @return NET_STATE_OFF or NET_STATE_ON
