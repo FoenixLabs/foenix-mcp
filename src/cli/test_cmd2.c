@@ -1786,13 +1786,17 @@ short cmd_test(short screen, int argc, const char * argv[]) {
     if (argc > 1) {
         char feature_upcase[160];
 
-        /* Make an upper case copy of the feature to test */
-        strncpy(feature_upcase, argv[1], 80);
+        /* Make an upper case copy of the feature to test (2.1.0: always ended with a 0) */
+        strncpy(feature_upcase, argv[1], sizeof(feature_upcase) - 1);
+        feature_upcase[sizeof(feature_upcase) - 1] = 0;
         for (i = 0; i < strlen(feature_upcase); i++) {
             feature_upcase[i] = toupper(feature_upcase[i]);
         }
 
-        for (f = (p_cli_test_feature)cli_test_features; f->name != 0; f++) {
+        /* 2.1.0: the table ends with {"END", "END", 0}: stop at its empty handler. Stopping only at
+           an empty name walked past the end for a name that is not in the table (bus error in
+           strcmp). */
+        for (f = (p_cli_test_feature)cli_test_features; f->handler != 0; f++) {
             if (strcmp(f->name, feature_upcase) == 0) {
                 f->handler(screen, argc - 1, &argv[1]);
                 return 0;
