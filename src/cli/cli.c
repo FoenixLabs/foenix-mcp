@@ -26,6 +26,8 @@
 #include "cli/mem_cmds.h"
 #include "cli/settings.h"
 #include "topbar.h"
+#include "memory.h"
+#include "netpool.h"
 #include "cli/sound_cmds.h"
 #include "cli/test_cmds.h"
 #include "cli/vi.h"
@@ -635,6 +637,20 @@ short cmd_sysinfo(short channel, int argc, const char * argv[]) {
 
     sprintf(buffer, "System Memory: 0x%lX\n", cli_sys_info.system_ram_size);
     print(channel, buffer);
+
+    /* 2.1.0: the top of memory for programs, and the network pool just above it */
+    sprintf(buffer, "Top of memory: 0x%08lX (programs stay below)\n", (unsigned long)mem_get_ramtop());
+    print(channel, buffer);
+    {
+        t_netpool_info pool;
+        netpool_info(&pool);
+        if (pool.start != 0) {
+            sprintf(buffer, "Network pool: %lu KB at 0x%08lX, %lu bytes used in %u blocks, largest free %lu\n",
+                    (unsigned long)(pool.size / 1024), (unsigned long)pool.start, (unsigned long)pool.used,
+                    (unsigned)pool.blocks_used, (unsigned long)pool.largest_free);
+            print(channel, buffer);
+        }
+    }
 
     {
         /* 2.1.0: handles in use. After a command has ended only the console channels should

@@ -46,6 +46,7 @@ extern char __memory_start[];
 #include "boot.h"
 #include "dev/bitmap.h"
 #include "memory.h"
+#include "netpool.h"
 #include "dev/block.h"
 #include "dev/channel.h"
 #include "dev/console.h"
@@ -193,6 +194,12 @@ static void hw_initialize(void) {
     mem_init((uint32_t)__memory_start);
 #else
     mem_init(0xbd0000);
+#endif
+
+#if MODEL == MODEL_FOENIX_A2560K
+    /* 2.1.0: the network pool, right below the MCP's RAM ($0038_0000 - $0039_FFFF). Taken before
+     * anything else can reserve memory, so it is always at the same place (see netpool.h). */
+    netpool_init();
 #endif
 
     /* Initialize the indicators */
