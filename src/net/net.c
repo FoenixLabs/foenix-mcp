@@ -3,8 +3,11 @@
  *
  * 2.1.0: the network in the MCP: settings, NET ON / NET OFF and the network log (see net.h).
  *
- * Step M2 (groundwork): FELINC itself is not in the MCP yet. NET ON says so and leaves the
- * network off; the settings and the log already work, so mcp.init can set them now.
+ * FELINC (net/felinc) is connected through three hooks: its memory comes from the network pool,
+ * its text goes to the network log (or, for NET status lists, to the screen of that command), and
+ * an error inside FELINC only sets a flag, after which net_poll stops the network.
+ *
+ * For now FELINC runs when net_poll is called: by the command line while it waits for a key.
  */
 
 #include <ctype.h>
@@ -13,8 +16,11 @@
 #include "errors.h"
 #include "simpleio.h"
 #include "utilities.h"
+#include "timers.h"
 #include "dev/rtc.h"
+#include "netpool.h"
 #include "net/net.h"
+#include "net/felinc/felinc.h"
 
 /*
  * Settings
@@ -164,10 +170,106 @@ const char * net_setting_get(short index) {
 }
 
 /*
+ * FELINC's text: a line at a time into the network log, or to the screen of a NET command
+ */
+
+static char log_line[128];              /* the line FELINC is writing (it sends pieces) */
+static short log_line_length = 0;
+static short print_channel = -1;        /* >= 0 while a NET command shows a FELINC list */
+
+/*
+ * felinc_text - FELINC's print hook
+ *
+ * Input:  text = a piece of text, with its newlines
+ * Output: none. To the screen of the NET command that asked for a list (print_channel), else
+ *         line by line into the network log.
+ */
+static void felinc_text(const char * text) {
+    if (print_channel >= 0) {
+        print(print_channel, text);
+        return;
+    }
+    for (; *text != 0; text++) {
+        if (*text == '\n' || log_line_length == sizeof(log_line) - 1) {
+            log_line[log_line_length] = 0;
+            if (log_line_length > 0) {
+                net_log(log_line);
+            }
+            log_line_length = 0;
+            if (*text == '\n') {
+                continue;
+            }
+        }
+        log_line[log_line_length++] = *text;
+    }
+}
+
+/*
+ * Errors inside FELINC
+ */
+
+static short fatal_seen = 0;            /* set by felinc_fatal, handled by net_poll */
+
+/*
+ * felinc_fatal - FELINC's fatal hook: an error inside FELINC (a program error, not the network)
+ *
+ * Input:  reason = what went wrong
+ * Output: none. FELINC calls this in the middle of its own work, so it must not call FELINC
+ *         (felinc_shutdown would free buffers in use): it only logs and sets a flag. FELINC then
+ *         drops the operation, and net_poll stops the network.
+ */
+static void felinc_fatal(const char * reason) {
+    net_log("FELINC error, the network stops:");
+    net_log(reason);
+    fatal_seen = 1;
+}
+
+/*
  * Start and stop
  */
 
 static short state = NET_STATE_OFF;
+
+/*
+ * setting_or_default - a setting for felinc_init
+ *
+ * Input:  index = which setting
+ * Output: the value, or 0 (= FELINC's default) if it is not set
+ */
+static char * setting_or_default(short index) {
+    return (setting_values[index][0] != 0) ? setting_values[index] : 0;
+}
+
+/*
+ * print_ip - print an IPv4 address
+ *
+ * Input:  channel = where, ip = the address (a.b.c.d with a in the top byte)
+ * Output: none
+ */
+static void print_ip(short channel, uint32_t ip) {
+    char text[16];
+    sprintf(text, "%u.%u.%u.%u", (unsigned)(ip >> 24), (unsigned)((ip >> 16) & 0xFF),
+            (unsigned)((ip >> 8) & 0xFF), (unsigned)(ip & 0xFF));
+    print(channel, text);
+}
+
+/*
+ * check_pool_empty - after a stop, FELINC must have given back all its memory
+ *
+ * Input:  none
+ * Output: none (a line in the log if blocks are left)
+ */
+static void check_pool_empty(void) {
+    t_netpool_info pool;
+    char text[64];
+
+    netpool_info(&pool);
+    if (pool.blocks_used != 0) {
+        sprintf(text, "network pool: %u blocks (%lu bytes) not given back", (unsigned)pool.blocks_used,
+                (unsigned long)pool.used);
+        net_log(text);
+    }
+}
 
 /*
  * net_start - start the network (NET ON)
@@ -176,15 +278,61 @@ static short state = NET_STATE_OFF;
  * Output: 0, or a negative error
  */
 short net_start(short channel) {
+    long until;
+    short dhcp = (strcmp(setting_values[NET_SET_DHCP], "ON") == 0);
+
     if (state == NET_STATE_ON) {
         print(channel, "The network is already on.\n");
         return 0;
     }
 
-    /* Step M2 groundwork: FELINC comes in a later step */
-    print(channel, "NET ON: the TCP/IP stack (FELINC) is not in this MCP yet.\n");
-    net_log("NET ON: no TCP/IP stack in this MCP yet");
-    return ERR_NOT_SUPPORTED;
+    felinc_set_alloc(netpool_alloc, netpool_free);
+    felinc_set_print(felinc_text);
+    felinc_set_fatal(felinc_fatal);
+    fatal_seen = 0;
+
+    net_log("NET ON");
+    if (!felinc_init(setting_or_default(NET_SET_MAC), dhcp ? true : false, setting_or_default(NET_SET_IP),
+                     setting_or_default(NET_SET_MASK), setting_or_default(NET_SET_GATEWAY))) {
+        check_pool_empty();
+        print(channel, "NET ON: the network did not start (see NET LOG).\n");
+        return ERR_GENERAL;
+    }
+    state = NET_STATE_ON;
+
+    if (!dhcp) {
+        print(channel, "Network on: ");
+        print_ip(channel, felinc_get_ip());
+        print(channel, "\n");
+        return 0;
+    }
+
+    /* With DHCP: wait a little for the address, so it can be shown; FELINC keeps trying after */
+    print(channel, "Network on, asking for an address (DHCP)... ");
+    until = timers_jiffies() + 10 * 60;
+    while (felinc_get_ip() == 0 && timers_jiffies() < until && !fatal_seen) {
+        felinc_poll();
+    }
+    if (felinc_get_ip() != 0) {
+        print_ip(channel, felinc_get_ip());
+        print(channel, "\n");
+    } else {
+        print(channel, "no answer yet; it keeps asking (NET shows the address).\n");
+    }
+    return 0;
+}
+
+/*
+ * stop - stop FELINC and check that it gave back its memory
+ *
+ * Input:  why = for the log
+ * Output: none
+ */
+static void stop(const char * why) {
+    felinc_shutdown();
+    state = NET_STATE_OFF;
+    net_log(why);
+    check_pool_empty();
 }
 
 /*
@@ -198,8 +346,25 @@ void net_stop(short channel) {
         print(channel, "The network is already off.\n");
         return;
     }
-    state = NET_STATE_OFF;
-    net_log("network off");
+    stop("NET OFF");
+}
+
+/*
+ * net_poll - let the network do its work: received frames, timers, DHCP
+ *
+ * Input:  none
+ * Output: none. Stops the network after an error inside FELINC (see felinc_fatal).
+ */
+void net_poll(void) {
+    if (state != NET_STATE_ON) {
+        return;
+    }
+    if (fatal_seen) {
+        fatal_seen = 0;
+        stop("network stopped after a FELINC error");
+        return;
+    }
+    felinc_poll();
 }
 
 /*
@@ -210,6 +375,42 @@ void net_stop(short channel) {
  */
 short net_state(void) {
     return state;
+}
+
+/*
+ * net_print_status - show the network's address and a FELINC list on a screen
+ *
+ * Input:  channel = where, list = NET_LIST_STATUS, _TCP, _ARP or _DNS
+ * Output: none
+ */
+void net_print_status(short channel, short list) {
+    uint8_t mac[6];
+    char text[40];
+
+    if (state != NET_STATE_ON) {
+        return;
+    }
+    if (list == NET_LIST_STATUS) {
+        print(channel, "Address: ");
+        if (felinc_get_ip() != 0) {
+            print_ip(channel, felinc_get_ip());
+        } else {
+            print(channel, "none yet (DHCP)");
+        }
+        felinc_get_mac(mac);
+        sprintf(text, ", MAC %02X:%02X:%02X:%02X:%02X:%02X\n", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        print(channel, text);
+    }
+
+    /* FELINC's lists go to this screen, not to the log */
+    print_channel = channel;
+    switch (list) {
+        case NET_LIST_TCP: felinc_print_tcp(); break;
+        case NET_LIST_ARP: felinc_print_arp(); break;
+        case NET_LIST_DNS: felinc_print_dns(); break;
+        default:           felinc_print_status(); break;
+    }
+    print_channel = -1;
 }
 
 /*

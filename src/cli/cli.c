@@ -25,6 +25,7 @@
 #include "cli/dos_cmds.h"
 #include "cli/mem_cmds.h"
 #include "cli/net_cmds.h"
+#include "net/net.h"
 #include "cli/settings.h"
 #include "topbar.h"
 #include "memory.h"
@@ -165,7 +166,7 @@ const t_cli_command g_cli_commands[] = {
     { "MKBOOT", "MKBOOT <drive #> -r | -b <boot sector path> | -s <start file path> : make a drive bootable", cmd_mkboot },
     { "MKDIR", "MKDIR <path> : create a directory", cmd_mkdir },
     { "MOVE", "MOVE <src path> <dst path> : move files or folders (* and ? allowed in the name)", cmd_move },
-    { "NET", "NET [ON|OFF|LOG [CLEAR]] : network state and settings, start or stop the network, the network log", cmd_net },
+    { "NET", "NET [ON|OFF|TCP|ARP|DNS|LOG [CLEAR]] : network state and settings, start or stop it, lists, the network log", cmd_net },
     { "PEEK8", "PEEK8 <addr> : print the byte at the address in memory", mem_cmd_peek8 },
     { "PEEK16", "PEEK16 <addr> : print the 16-bit word at the address in memory", mem_cmd_peek16 },
     { "PEEK32", "PEEK32 <addr> : print the 32-bit long word at the address in memory", mem_cmd_peek32 },
@@ -902,6 +903,13 @@ short cli_getchar(short channel) {
     char c;                             // The current character read from the console
 
     do {
+        if (state == CLI_ES_BASE) {
+            /* 2.1.0: while the command line waits for a key, the network gets its turn (FELINC
+             * works when it is polled; later an interrupt does this, then programs get it too) */
+            while (net_state() == NET_STATE_ON && !(sys_chan_status(channel) & CDEV_STAT_READABLE)) {
+                net_poll();
+            }
+        }
         c = sys_chan_read_b(channel);
         switch (state) {
             case CLI_ES_BASE:
@@ -1536,7 +1544,7 @@ short cli_process_line(short channel, char * command_line) {
     char * argv[MAX_ARGC];
 
     for (argc = 0, token_save = command_line; argc < MAX_ARGC; argc++) {
-        arg = strtok_r(command_line, delim, &token_save);
+        arg = mcp_strtok_r(command_line, delim, &token_save);
         if (arg != 0) {
             argv[argc] = arg;
         } else {

@@ -9,14 +9,20 @@
 
 
 /**
- * Re-entrant version of strtok_r, because VBCC does not provide it
+ * Re-entrant version of strtok_r, because VBCC does not provide it.
+ *
+ * 2.1.0: renamed from strtok_r. It is NOT the standard strtok_r: it ignores source and always
+ * goes on from *saveptr (the callers set *saveptr to the string first, and some pass the same
+ * string again for the next token). Under the old name it replaced the C library's strtok_r, so
+ * the library's strtok (which FELINC uses to read MAC and IP addresses) started from stale state
+ * and FELINC got a garbage MAC address.
  *
  * @param source the string to tokenize
  * @param delimiter the string containing the delimiter
  * @param saveptr a pointer to the character pointer to use to save the state of the tokenizer
  * @return the pointer to the next token, 0 if none
  */
-char * strtok_r(char * source, const char * delimiter, char ** saveptr) {
+char * mcp_strtok_r(char * source, const char * delimiter, char ** saveptr) {
     char * x = *saveptr;
     char * y;
 

@@ -323,9 +323,15 @@ fatfs_obj := $(subst .c,.o,$(fat_c_src))
 cli_c_src := $(wildcard cli/*.c)
 cli_obj := $(subst .c,.o,$(cli_c_src))
 
-# 2.1.0: the network (net.c; FELINC follows)
-net_c_src := $(wildcard net/*.c)
+# 2.1.0: the network (net/net.c) and FELINC, the TCP/IP stack (net/felinc: a copy of a tagged
+# FELINC release, see net/felinc/README.md). FELINC is written for Calypsi's unsigned char (the
+# MCP uses --char-is-signed), and finds sys_time_jiffies in net/port/mcp/syscalls.h. It is built
+# without optimisation, as FELINC's own Makefile does (tested that way; -O2 gained only 3%).
+felinc_c_src := $(wildcard net/felinc/*.c)
+felinc_obj := $(subst .c,.o,$(felinc_c_src))
+net_c_src := $(wildcard net/*.c) $(felinc_c_src)
 net_obj := $(subst .c,.o,$(net_c_src))
+$(felinc_obj): CFLAGS := $(subst -O2,,$(subst --char-is-signed,--char-is-unsigned,$(CFLAGS))) -I$(CURDIR)/net/port
 
 # Base MCP files
 c_src :=  $(wildcard *.c)
