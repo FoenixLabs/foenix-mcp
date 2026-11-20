@@ -124,6 +124,14 @@ static uint32_t next_try;		/* jiffies when to repeat our message */
 static uint32_t timeout;		/* current wait time in jiffies */
 static uint8_t tries;			/* how often the current message was sent */
 static uint32_t offered_ip;		/* address from the OFFER */
+
+/* The address of our last lease, asked for again in the next DISCOVER.
+ * Why: after a RELEASE (felinc_shutdown) many routers hand out a new
+ * address to the next DISCOVER, unless we say which one we had.
+ * dhcp_init() does not clear it, so it lasts while the program runs;
+ * 0 = no lease yet.
+ */
+static uint32_t last_leased_ip = 0;
 static uint32_t server_ip;		/* the server we deal with */
 
 /* The fixed settings to fall back to (fallback_ip 0 = none) */
@@ -252,6 +260,12 @@ static void dhcp_send( uint8_t type, uint32_t now )
 			p = dhcp_add_option( p, DHCP_OPT_REQUESTED_IP, 4, &offered_ip );
 			p = dhcp_add_option( p, DHCP_OPT_SERVER_ID, 4, &server_ip );
 		}
+
+		/* A DISCOVER may suggest the address we had before (RFC 2131
+		 * 4.4.1); a server that cannot give it offers another one.
+		 */
+		if( type == DHCPDISCOVER && last_leased_ip != 0 )
+			p = dhcp_add_option( p, DHCP_OPT_REQUESTED_IP, 4, &last_leased_ip );
 		p = dhcp_add_option( p, DHCP_OPT_PARAM_REQUEST, sizeof(wanted), wanted );
 	}
 	*p = DHCP_OPT_END;
@@ -446,6 +460,7 @@ static void dhcp_bind( uint32_t ip, const dhcp_info *info, uint32_t now )
 
 	ip4_config( ip, mask, info->router );
 	fallback_active = false;
+	last_leased_ip = ip;
 
 	lease_dns = info->dns;
 	lease_ntp = info->ntp;
