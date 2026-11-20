@@ -19,6 +19,9 @@
 #define CHAN_MAX            16      // The maximum number of open channels we will support
 #define CHAN_DATA_SIZE      32      // The number of bytes in the channel's data area
 
+/* 2.1.0: how many channels are in use, of CHAN_MAX (for SYS INFO) */
+extern short chan_in_use(void);
+
 #define CDEV_CONSOLE 0
 #define CDEV_EVID 1
 #define CDEV_COM1 2

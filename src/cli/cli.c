@@ -30,6 +30,7 @@
 #include "cli/test_cmds.h"
 #include "cli/vi.h"
 #include "dev/channel.h"
+#include "dev/fsys.h"
 #include "dev/console.h"
 #include "dev/ps2.h"
 #include "dev/rtc.h"
@@ -634,6 +635,16 @@ short cmd_sysinfo(short channel, int argc, const char * argv[]) {
 
     sprintf(buffer, "System Memory: 0x%lX\n", cli_sys_info.system_ram_size);
     print(channel, buffer);
+
+    {
+        /* 2.1.0: handles in use. After a command has ended only the console channels should
+           be open; more means a command did not give a handle back. */
+        short files, dirs, max_files, max_dirs;
+        fsys_handles_in_use(&files, &dirs, &max_files, &max_dirs);
+        sprintf(buffer, "Open: %d of %d files, %d of %d folders, %d of %d channels\n",
+                files, max_files, dirs, max_dirs, chan_in_use(), CHAN_MAX);
+        print(channel, buffer);
+    }
 
     sprintf(buffer, "FPGA Model: %08lX\n", cli_sys_info.fpga_model);
     print(channel, buffer);

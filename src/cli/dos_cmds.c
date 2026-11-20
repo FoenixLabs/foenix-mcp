@@ -447,6 +447,7 @@ short cmd_dir(short screen, int argc, const char * argv[]) {
                             dir_entry_insert(&directories, entry);
                         } else {
                             print(screen, "Unable to display directory... out of memory.\n");
+                            fsys_closedir(dir);     /* 2.1.0: give the handle back */
                             return -1;
                         }
 
@@ -457,6 +458,7 @@ short cmd_dir(short screen, int argc, const char * argv[]) {
                             dir_entry_insert(&files, entry);
                         } else {
                             print(screen, "Unable to display directory... out of memory.\n");
+                            fsys_closedir(dir);     /* 2.1.0: give the handle back */
                             return -1;
                         }
                     }

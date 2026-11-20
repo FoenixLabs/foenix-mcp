@@ -89,6 +89,14 @@ extern short fsys_opendir(const char * path);
 extern short fsys_closedir(short dir);
 
 /**
+ * 2.1.0: how many file and directory handles are in use (for SYS INFO).
+ *
+ * @param files set to the number of open files, max_files to how many there can be
+ * @param dirs set to the number of open directories, max_dirs to how many there can be
+ */
+extern void fsys_handles_in_use(short * files, short * dirs, short * max_files, short * max_dirs);
+
+/**
  * Attempt to read an entry from an open directory
  *
  * Inputs:
