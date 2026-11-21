@@ -1020,7 +1020,7 @@ short cmd_credits(short channel, int argc, const char * argv[]) {
     print(channel, "\n");
 
     {
-        /* 2.0.30: VER_SUFFIX ("c" = caches on) makes the text one longer, so pad it to the box width */
+        /* 2.0.30: VER_SUFFIX ("-cache" = caches on) makes the text longer, so pad it to the box width */
         char ver[24];
         sprintf(ver, "%d.%d.%d%s", VER_MAJOR, VER_MINOR, VER_BUILD, VER_SUFFIX);
         sprintf(line, "| Version       | %-50s|\n", ver);

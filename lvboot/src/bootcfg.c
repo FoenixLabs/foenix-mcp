@@ -158,28 +158,59 @@ static const char * parse_line(const char * line) {
 }
 
 /*
- * mcp_label - lvboot 1.3 (2026-11-13): name an entry after the MCP that is in its flash block.
+ * block_label - name an entry after what is in its flash block (lvboot 1.3: the MCP; 1.4: any program)
  *
  * Input:  e = a used entry
- * Output: none; e->name becomes for example "MCP 2.0.30c" (c = caches on) when the block holds an MCP info record
+ * Output: none; e->name becomes the name the block gives itself, for example "MCP 2.1.0-cache", when
+ *         the block holds a valid block info record; otherwise it keeps its BOOT.CFG name
  *
- * MCP 2.0.30 and later carry an info record in their vector table (vectors 16-19, offset $40 of the block, never
- * used by the CPU): "MCPI", the version (major << 24 | minor << 16 | build), flags (bit 0 = the CPU caches are on)
- * and the three XOR-ed as a check. The record replaces the BOOT.CFG name, so the menu always shows which MCP is
- * really in the flash. Blocks without a valid record (older MCPs, EmuTOS, ...) keep their BOOT.CFG name.
+ * The block info record is in the block's 680x0 vector table, vectors 16-23 (offset $40-$5F of the
+ * block). Motorola reserved these on every 680x0 (68000 to 68060) and the CPU never reads them, so any
+ * program in a flash block (the MCP, EmuTOS, ...) can carry one. Eight longs:
+ *
+ *   $40 magic   "MCPI" (MCP 2.0.30 and later) or "BLKI" (any other program)
+ *   $44 version MCP: major << 24 | minor << 16 | build; 0 for others
+ *   $48 flags   bit 0 = the MCP switches the CPU caches on, bit 1 = $50 holds the name
+ *   $4C check   the three longs above XOR-ed together
+ *   $50 name    16 bytes: 1-15 printable ASCII characters, then 0 bytes (only with flags bit 1)
+ *
+ * The name is written by tools/block_name.py (the MCP's Makefile runs it from MCP 2.1.0 on), so lvboot
+ * never needs to know how a program wants to be called. An "MCPI" record without a name (MCP 2.0.30 to
+ * 2.0.34) is shown as lvboot 1.3 did: "MCP x.y.z", with "c" when the caches are on.
  */
-#define MCP_INFO_OFFSET 0x40UL
-#define MCP_INFO_MAGIC  0x4D435049UL            /* "MCPI" */
+#define BLOCK_INFO_OFFSET 0x40UL
+#define BLOCK_INFO_MCP    0x4D435049UL          /* "MCPI" */
+#define BLOCK_INFO_OTHER  0x424C4B49UL          /* "BLKI" */
+#define BLOCK_INFO_NAME   0x2UL                 /* flags: the name is there */
+#define BLOCK_NAME_SIZE   16
 
-static void mcp_label(boot_entry_t * e) {
-    const volatile uint32_t * r = (const volatile uint32_t *)(e->addr + MCP_INFO_OFFSET);
+static void block_label(boot_entry_t * e) {
+    const volatile uint32_t * r = (const volatile uint32_t *)(e->addr + BLOCK_INFO_OFFSET);
+    const volatile char * text = (const volatile char *)(e->addr + BLOCK_INFO_OFFSET + 16);
     uint32_t magic = r[0], ver = r[1], flags = r[2], check = r[3];
+    char name[BLOCK_NAME_SIZE];
+    int i;
 
-    if (magic != MCP_INFO_MAGIC || (magic ^ ver ^ flags) != check) return;
-    /* "c" after the number = the caches are on, the same suffix the MCP itself shows ("caches ON" did not fit) */
-    lv_snprintf(e->name, sizeof(e->name), "MCP %d.%d.%d%s", (int)(ver >> 24), (int)((ver >> 16) & 0xFF),
-                (int)(ver & 0xFFFF), (flags & 1) ? "c" : "");
-    dbg_printf("bootcfg: block at $%08lX holds %s\n", (unsigned long)e->addr, e->name);
+    if ((magic != BLOCK_INFO_MCP && magic != BLOCK_INFO_OTHER) || (magic ^ ver ^ flags) != check) return;
+
+    if (flags & BLOCK_INFO_NAME) {
+        /* Use the name only when it is printable text ending in a 0 byte within the 16 bytes */
+        for (i = 0; i < BLOCK_NAME_SIZE; i++) {
+            name[i] = text[i];
+            if (name[i] == 0 || name[i] < 0x20 || name[i] > 0x7E) break;
+        }
+        if (i > 0 && i < BLOCK_NAME_SIZE && name[i] == 0) {
+            lv_snprintf(e->name, sizeof(e->name), "%s", name);
+            dbg_printf("bootcfg: block at $%08lX names itself %s\n", (unsigned long)e->addr, e->name);
+            return;
+        }
+    }
+    if (magic == BLOCK_INFO_MCP) {
+        /* An MCP from before the name (2.0.30 - 2.0.34): built from the numbers, "c" = caches on */
+        lv_snprintf(e->name, sizeof(e->name), "MCP %d.%d.%d%s", (int)(ver >> 24), (int)((ver >> 16) & 0xFF),
+                    (int)(ver & 0xFFFF), (flags & 1) ? "c" : "");
+        dbg_printf("bootcfg: block at $%08lX holds %s\n", (unsigned long)e->addr, e->name);
+    }
 }
 
 static void scan_flash(void) {
@@ -272,11 +303,11 @@ void cfg_load(void) {
         for (k = 1; k <= CFG_MAX_ENTRIES && !cfg_default; k++) if (cfg_entries[k].used) cfg_default = k;
         cfg_timeout = cfg_default ? 5 : 0;
     }
-    /* lvboot 1.3: entries whose block holds an MCP with an info record show its version and cache setting */
+    /* lvboot 1.3/1.4: entries whose block holds a block info record show the name the block gives itself */
     {
         int k;
         for (k = 1; k <= CFG_MAX_ENTRIES; k++)
-            if (cfg_entries[k].used && !flash_blank(cfg_entries[k].addr)) mcp_label(&cfg_entries[k]);
+            if (cfg_entries[k].used && !flash_blank(cfg_entries[k].addr)) block_label(&cfg_entries[k]);
     }
 }
 

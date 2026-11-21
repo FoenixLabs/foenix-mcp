@@ -105,10 +105,15 @@ __program_root_section:
             .long MCP_INFO_VER      ; 17 - version: major (bits 31-24), minor (23-16), build (15-0)
             .long MCP_INFO_FLAGS    ; 18 - flags: bit 0 = CPU caches on
             .long MCP_INFO_MAGIC ^ MCP_INFO_VER ^ MCP_INFO_FLAGS ; 19 - check: the three XOR-ed
-            .long not_impl          ; 20 - Reserved
-            .long not_impl          ; 21 - Reserved
-            .long not_impl          ; 22 - Reserved
-            .long not_impl          ; 23 - Reserved
+            ;
+            ; 20-23: 2.1.0 the name lvboot 1.4 shows (16 bytes, such as "MCP 2.1.0-cache"). The
+            ; Makefile writes it into the image after linking with tools/block_name.py, which also
+            ; sets bit 1 of the flags (18) and the check (19). Boot loaders before 1.4 ignore it.
+            ;
+            .long 0                 ; 20 - name for the boot loader (tools/block_name.py)
+            .long 0                 ; 21 - name for the boot loader (tools/block_name.py)
+            .long 0                 ; 22 - name for the boot loader (tools/block_name.py)
+            .long 0                 ; 23 - name for the boot loader (tools/block_name.py)
             .long handle_spurious   ; 24 - Spurious Interrupt
             .long not_impl          ; 25 - Level 1 Interrupt Autovector
             .long not_impl          ; 26 - Level 2 Interrupt Autovector

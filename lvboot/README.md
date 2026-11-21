@@ -1,5 +1,23 @@
 # Gen1 LVGL boot loader (K25 first)
 
+**1.4 (2026-11-21):** an entry shows the name its flash block gives itself, so lvboot never needs to know how a
+program is called. Any program in a flash block (the MCP, EmuTOS, ...) can carry a block info record in its 680x0
+vector table, vectors 16-23 (offset `$40`-`$5F` of the block): Motorola reserved these on every 680x0 (68000 up to
+68060) and the CPU never reads them.
+
+| Offset | Long | Contents |
+|--------|------|----------|
+| `$40` | magic | `"MCPI"` (the MCP, since 2.0.30) or `"BLKI"` (any other program) |
+| `$44` | version | the MCP: major << 24 \| minor << 16 \| build; 0 for others |
+| `$48` | flags | bit 0 = the MCP switches the CPU caches on; bit 1 = `$50` holds the name |
+| `$4C` | check | the three longs above XOR-ed together |
+| `$50`-`$5F` | name | 1-15 printable ASCII characters, then 0 bytes (only with flags bit 1) |
+
+`tools/block_name.py IMAGE.bin "EmuTOS 1.3"` writes the name into any block image (it adds a `"BLKI"` record when
+there is none); the MCP's Makefile runs it from MCP 2.1.0 on ("MCP 2.1.0-cache"). The record replaces the BOOT.CFG
+name. An `"MCPI"` record without a name (MCP 2.0.30 - 2.0.34) is shown as in 1.3 ("MCP 2.0.34c"). Older boot
+loaders ignore bit 1 and the name, so lvboot 1.3 still shows a new MCP as "MCP 2.1.0c".
+
 **1.3 (2026-11-13):** an entry whose flash block holds MCP 2.0.30 or later is shown as "MCP 2.0.30c" (c = caches on) or "MCP 2.0.30",
 from the MCP info record at offset `$40` of the block (see the main README, version 2.0.30). The Makefile also builds on
 macOS / Linux now: `VBCC=../vbcc PATH=~/opt/vbcc/bin:$PATH make MACHINE=K25`.
