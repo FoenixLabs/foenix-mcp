@@ -356,12 +356,14 @@ int_restore:
 ;
 
 handle_bus_err:
+            ; 2.1.0: the 68040 access error frame (format $7) has the effective address of the
+            ; instruction at +8 and the address that failed (the fault address) at +$14
             lea (panic_number).l,a0
             lea (panic_pc).l,a1
             lea (panic_address).l,a2
             move.w #2,(a0)
             move.l (2,a7),(a1)
-            move.l (8,a7),(a2)
+            move.l (0x14,a7),(a2)
             bra call_panic
 
 handle_addr_err:
@@ -415,8 +417,12 @@ handle_spurious:
             move.l (2,a7),(a1)
             bra call_panic
 
+; 2.1.0: panic shows the error in the top bar and waits for a key; then back to the command line
+; with a new supervisor stack (restart_cli), in supervisor mode with all interrupts allowed (the
+; exception may have come in the middle of an interrupt handler)
 call_panic: jsr (panic).l
-panic_lock: bra panic_lock
+            move.w #0x2000,sr
+            bra restart_cli
 
 ;
 ; Make a system call based on the number of the system function:
@@ -441,7 +447,11 @@ syscall:
 ; TRAP #15 handler... transfer control to the C dispatcher
 ;
 h_trap_15:
-            cmp.w #0x43,d1          ; Is this a sys_proc_elevate call?
+            ; 2.1.0: the function number is in d0 (d1 is the first argument). This tested d1, so a
+            ; call whose first argument ended in $0043 (a pointer, say) was taken for an elevate:
+            ; the caller went to supervisor mode and the call was never made. Long compare: the
+            ; whole function number, not only its low word.
+            cmp.l #0x43,d0          ; Is this a sys_proc_elevate call (KFN_ELEVATE)?
             beq h_trap_elev         ; Yes, just handle it here
 
             move.l d6,-(sp)         ; Push the parameters to the stack for the C call
@@ -458,9 +468,14 @@ h_trap_15:
 
             rte                     ; Return to the caller
 
+; 2.1.0: sys_proc_elevate is refused (ERR_NOT_SUPPORTED, -37). It set the supervisor bit in the
+; caller's saved status register, but the caller then went on with the supervisor stack instead
+; of its own (its return addresses and variables are on its user stack), so it crashed at once.
+; Until a full version (the program's stack as supervisor stack, as Super() on the Atari) the
+; program stays in user mode; privileged work goes through system calls (sys_int_enable_all, ...).
 h_trap_elev:
-            ori.w #0x2000,(a7)      ; Change the caller's privilege to supervisor
-            rte                     ; And return to it
+            move.l #-37,d0          ; ERR_NOT_SUPPORTED
+            rte
 
 ;
 ; Jump into a user mode code

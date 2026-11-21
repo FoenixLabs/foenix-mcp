@@ -99,7 +99,7 @@
 #define KFN_RUN                 0x40    /* Load an execute a binary file */
 #define KFN_MEM_GET_RAMTOP      0x41    /* Get the upper limit of the top of system RAM */
 #define KFN_MEM_RESERVE         0x42    /* Reserve a block of memory at the top of system RAM */
-#define KFN_ELEVATE             0x43    /* Switch the user process to a full privilege */
+#define KFN_ELEVATE             0x43    /* Switch the user process to a full privilege (2.1.0: refused, ERR_NOT_SUPPORTED) */
 #define KFN_VAR_SET             0x44    /* Set the value of a system variable */
 #define KFN_VAR_GET             0x45    /* Get the value of a system variable */
 

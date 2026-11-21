@@ -62,6 +62,16 @@ extern void topbar_get_app(short screen, char * buffer);
 extern short topbar_set_user(short screen, const char * text);
 
 /**
+ * Where the text of the USER part goes on a screen (2.1.0, used by the panic screen, which writes
+ * straight into the text memory). A screen without a USER part gives the columns up to the clock.
+ *
+ * @param screen the text screen (0 or 1)
+ * @param start set to the first column
+ * @param width set to the number of columns
+ */
+extern void topbar_user_columns(short screen, short * start, short * width);
+
+/**
  * The text system calls as programs see them: the same as txt_set_region, txt_get_region and
  * txt_get_sizes, but without row 0. The program's row 0 is the screen's row 1, the screen is one
  * row shorter, and a region of size 0 means "everything below the bar".

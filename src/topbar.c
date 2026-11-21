@@ -77,6 +77,22 @@ static void topbar_layout(short screen, t_layout * layout) {
 }
 
 /**
+ * Where the text of the USER part goes on a screen. See topbar.h.
+ */
+void topbar_user_columns(short screen, short * start, short * width) {
+    t_layout layout;
+
+    topbar_layout(screen, &layout);
+    if (layout.user_width >= 3) {
+        *start = layout.user_start + 1;                 /* inside its one-column margins */
+        *width = layout.user_width - 2;
+    } else {
+        *start = 0;                                     /* no USER part: up to the clock */
+        *width = (layout.clock_sep > 0) ? layout.clock_sep : 0;
+    }
+}
+
+/**
  * Get ready to write in row 0: save the screen's region, cursor and colours, then switch to the
  * whole screen in the bar's colours.
  *

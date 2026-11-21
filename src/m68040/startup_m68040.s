@@ -363,12 +363,14 @@ _int_restore:       move.w (4,sp),d0    ; Get the priority into d0
 ;
 
 _handle_bus_err:
+                    ; 2.1.0: the fault address is at +$14 of the 68040 access error frame (+8 is
+                    ; the effective address of the instruction); see the Calypsi version
                     lea _panic_number,a0
                     lea _panic_pc,a1
                     lea _panic_address,a2
                     move.w #2,(a0)
                     move.l (2,a7),(a1)
-                    move.l (8,a7),(a2)
+                    move.l ($14,a7),(a2)
                     bra call_panic
 
 _handle_addr_err:
@@ -422,8 +424,10 @@ _handle_spurious:
                     move.l (2,a7),(a1)
                     bra call_panic
 
+; 2.1.0: after panic (error in the top bar, a key) back to the command line; see the Calypsi version
 call_panic:         jsr _panic
-panic_lock:         bra panic_lock
+                    move.w #$2000,sr
+                    bra _restart_cli
 
 ;
 ; Function to make a system call based on the number of the system function:
@@ -448,7 +452,8 @@ _syscall:
 ; TRAP#15 handler... transfer control to the C dispatcher
 ;
 h_trap_15:
-            cmp.w #$43,d1               ; Is this a sys_proc_elevate call?
+            ; 2.1.0: the function number is in d0 (d1 is the first argument); see the Calypsi version
+            cmp.l #$43,d0               ; Is this a sys_proc_elevate call (KFN_ELEVATE)?
             beq h_trap_elev             ; Yes, just handle it here
 
             move.l d6,-(sp)             ; Push the parameters to the stack for the C call
@@ -466,8 +471,10 @@ h_trap_15:
 
             rte                         ; Return to the caller
 
-h_trap_elev ori #$2000,(a7)             ; Change the caller's privilege to supervisor
-            rte                         ; And return to it
+; 2.1.0: sys_proc_elevate is refused (ERR_NOT_SUPPORTED, -37): the caller went on with the
+; supervisor stack instead of its own and crashed; see the Calypsi version
+h_trap_elev move.l #-37,d0              ; ERR_NOT_SUPPORTED
+            rte
 
 ;
 ; Jump into a user mode code
