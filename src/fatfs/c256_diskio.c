@@ -12,6 +12,7 @@
 #include "ff.h"			/* Obtains integer types */
 #include "diskio.h"		/* Declarations of disk functions */
 #include "simpleio.h"
+#include "dev/rtc.h"
 
 /* Definitions of physical drive number for each drive */
 #define DEV_SDC		0	/* Example: Map Ramdisk to physical drive 0 */
@@ -174,4 +175,42 @@ DRESULT disk_ioctl (
 	} else {
 		return RES_OK;
 	}
+}
+
+
+/*-----------------------------------------------------------------------*/
+/* Date and time for new and changed files                               */
+/*-----------------------------------------------------------------------*/
+
+/*
+ * get_fattime - the current date and time for FatFS, which stamps every file and folder it
+ *               creates or writes with it (2.1.0; before, every file got 2020-01-01 00:00)
+ *
+ * Input:  none
+ * Output: the date and time packed as FAT wants it: bits 31-25 year - 1980, 24-21 month (1-12),
+ *         20-16 day, 15-11 hour (0-23), 10-5 minute, 4-0 seconds / 2
+ *
+ * The time comes from the real-time clock. A clock that was never set (or lost its battery) can
+ * read 0000-00-00 or a year FAT cannot hold; then the file gets 2020-01-01 00:00, the date every
+ * file got before, rather than a date that makes no sense.
+ */
+DWORD get_fattime(void) {
+	t_time time;
+	short hour;
+
+	rtc_get_time(&time);
+
+	if (time.year < 1980 || time.year > 2107 || time.month < 1 || time.month > 12 || time.day < 1 || time.day > 31) {
+		return ((DWORD)(2020 - 1980) << 25) | ((DWORD)1 << 21) | ((DWORD)1 << 16);
+	}
+
+	/* The clock can run in 12-hour mode: FAT wants 0-23 */
+	hour = time.hour;
+	if (!time.is_24hours) {
+		if (hour == 12) hour = 0;
+		if (time.is_pm) hour += 12;
+	}
+
+	return ((DWORD)(time.year - 1980) << 25) | ((DWORD)time.month << 21) | ((DWORD)time.day << 16) |
+	       ((DWORD)hour << 11) | ((DWORD)time.minute << 5) | ((DWORD)time.second >> 1);
 }
