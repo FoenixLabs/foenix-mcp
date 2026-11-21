@@ -272,6 +272,15 @@ MCP_VER_BUILD := $(shell grep "define VER_BUILD" version.h 2>/dev/null | tr -dc 
 ifneq ("$(MCP_VER_BUILD)","")
  ASFLAGS := $(ASFLAGS) -DMCP_VER_MAJOR=$(MCP_VER_MAJOR) -DMCP_VER_MINOR=$(MCP_VER_MINOR) -DMCP_VER_BUILD=$(MCP_VER_BUILD)
 endif
+
+# 2.1.0: the name the boot loader shows (lvboot 1.4 and later), written into the image by
+# ../tools/block_name.py after linking. "-cache" is the same suffix version.h gives the version
+# the MCP shows itself (VER_SUFFIX).
+ifeq ("$(CACHE)","1")
+ MCP_NAME := MCP $(MCP_VER_MAJOR).$(MCP_VER_MINOR).$(MCP_VER_BUILD)-cache
+else
+ MCP_NAME := MCP $(MCP_VER_MAJOR).$(MCP_VER_MINOR).$(MCP_VER_BUILD)
+endif
 LDFLAGS := $(LDFLAGS) $(LDFLAGS_FOR_UNIT)
 
 # New make file (Calypsi / 1_makefile per folder). This needs adaptation (removal?)
@@ -398,6 +407,7 @@ foenixmcp.bin: $(DEPS) $(CALYPSI_RULES)
 		--raw-multiple-memories --rtattr printf=nofloat --list-file=foenixmcp.map --cross-reference
 	$(PYTHON3) ../tools/calypsi_check.py $(DEPS:%.o=%.lst)
 	$(PYTHON3) ../tools/calypsi_image.py foenixmcp_vectors.raw flash.raw $@ --size $(PAD_FLASH_SIZE)
+	$(PYTHON3) ../tools/block_name.py $@ "$(MCP_NAME)"
 
 $(CALYPSI_RULES):
 	@echo "COMPILER=calypsi: no linker rules $@ (only UNIT=a2560k BLOCK=1 so far; use COMPILER=vbcc)" && false
@@ -412,6 +422,7 @@ foenixmcp.bin: $(DEPS)
 	$(CC) $(LDFLAGS) -o $@ $(FILES_TO_LINK)
 # TODO Test that the file is <= PAD_FLASH_SIZE bytes otherwise'll be slashing the OS !
 	$(PAD_CMD)
+	$(PYTHON3) ../tools/block_name.py $@ "$(MCP_NAME)"
 endif
 
 # Rule for generating include file containing RLE-compressed version of BMP splashscreen

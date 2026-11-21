@@ -180,6 +180,18 @@ way: the MCP's own `strtok_r` (not the standard one) replaced the C library's,
 so the library's `strtok` gave FELINC a garbage MAC address; it is now called
 `mcp_strtok_r`.
 
+**"-cache" instead of "c", and lvboot 1.4.** A cached MCP now calls itself
+`2.1.0-cache` (boot screen, SYSINFO, CREDITS), the same name as its release file.
+The boot loader no longer makes up that name: from lvboot 1.4 a flash block
+names itself. The 16 bytes after the MCP info record (vectors 20-23, offset
+`$50`, never read by any 680x0) hold the name, and bit 1 of the record's flags
+says it is there; `tools/block_name.py` writes it, and the Makefile runs it
+after linking (Calypsi and VBCC). Any other program in a flash block, such as
+EmuTOS, can do the same: `tools/block_name.py image.bin "EmuTOS 1.3"` adds a
+`"BLKI"` record with that name. lvboot 1.3 ignores the name and still shows a
+new MCP as "MCP 2.1.0c"; lvboot 1.4 shows the old MCPs (2.0.30 - 2.0.34) as
+before. The record is described in `lvboot/README.md`.
+
 ### Version 2.0.34: a usable command line, LS and a small VI
 
 **Programs in any folder.** The loader looked for the file's extension in the
