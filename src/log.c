@@ -13,12 +13,16 @@
 
 #include "dev/uart.h"
 #include "dev/txt_screen.h"
+#include "dev/channel.h"
+#include "topbar.h"
 #include "vicky3_txt_a_logger.h"
 
 #if MODEL == MODEL_FOENIX_A2560U || MODEL == MODEL_FOENIX_A2560U_PLUS
 #include "A2560U/gabe_a2560u.h"
 #elif (MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X)
 #include "A2560K/gabe_a2560k.h"
+#include "A2560K/vky_chan_a.h"
+#include "A2560K/vky_chan_b.h"
 #elif MODEL == MODEL_FOENIX_C256U || MODEL == MODEL_FOENIX_C256U_PLUS || MODEL == MODEL_FOENIX_FMX
 #include "C256/gabe_c256.h"
 #endif
@@ -168,10 +172,12 @@ void err_print(short channel, const char * message, short err_number) {
     sys_chan_write(channel, buffer, strlen(buffer));
 }
 
+#if !(MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X)
 /*
- * Display a panic screen
+ * panic_box - the panic screen before 2.1.0: a red screen with a box (machines other than the
+ * A2560K / A2560X / GenX); waits for ever
  */
-void panic(void) {
+static void panic_box(void) {
     char buffer[160];
     short column = 2;
     short row = 2;
@@ -261,6 +267,113 @@ TRACE("PANIC------------------------------------------");
     /* Wait forever */
     while (1) ;
 }
+
+#endif
+
+#if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X
+/*
+ * panic_name - the name of the exception in panic_number
+ *
+ * Input:  address_expected = set to 1 if panic_address means something for it
+ * Output: the name
+ */
+static const char * panic_name(short * address_expected) {
+    *address_expected = 0;
+    switch (panic_number) {
+        /* Short: the line must fit in the USER part of the top bar (32 columns on 80) */
+        case 2:  *address_expected = 1; return "Bus Err";
+        case 3:  *address_expected = 1; return "Addr Err";
+        case 4:  return "Illegal";
+        case 5:  return "Div by 0";
+        case 6:  return "CHK";
+        case 7:  return "TRAPV";
+        case 8:  return "Privilege";
+        case 24: return "Spurious";
+        default: return "Exception";
+    }
+}
+
+/*
+ * panic_bar - write the error in white on red into the USER part of the top bar of a screen,
+ * straight into its text memory
+ *
+ * The APP part keeps the path of the program that went wrong, the CLOCK part the time. The hint
+ * is added only where it fits (wide screens).
+ *
+ * Input:  text, color = the text and colour memory of the screen; screen = its number;
+ *         message = the error; hint = added after it if there is room
+ * Output: none
+ */
+static void panic_bar(volatile unsigned char * text, volatile unsigned char * color, short screen,
+                      const char * message, const char * hint) {
+    short start, width, i;
+    short with_hint;
+
+    topbar_user_columns(screen, &start, &width);
+    with_hint = ((short)(strlen(message) + 2 + strlen(hint)) <= width);
+    for (i = 0; i < width; i++) {
+        char c = ' ';
+        if (*message != 0) {
+            c = *message++;
+        } else if (with_hint && i >= width - (short)strlen(hint)) {
+            c = hint[i - (width - (short)strlen(hint))];  /* the hint at the right-hand end */
+        }
+        text[start + i] = c;
+        color[start + i] = (15 << 4) | 1;               /* white on red */
+    }
+}
+
+/*
+ * Display a panic: an exception the MCP cannot handle (bus error, illegal instruction, ...).
+ *
+ * 2.1.0: the screen is left as it is, so the last text of the program that went wrong stays
+ * visible; the error is shown in white on red in the USER part of the top bar (row 0 belongs to
+ * the MCP) of both screens, so the APP part still shows the program's path; also sent to the log
+ * (COM1). After a key the start-up code goes back to the command
+ * line (call_panic, restart_cli). If the PC lies in the MCP itself, the MCP may be broken: then the
+ * bar says a reset is safer.
+ */
+void panic(void) {
+    char message[120];
+    short address_expected;
+    const char * name = panic_name(&address_expected);
+    short in_mcp = (panic_pc >= 0xFFC00000);
+
+    const char * hint = in_mcp ? "MCP crashed: reset is safer" : "key: back to the MCP";
+
+    /* At most 32 characters: "<!> Addr Err PC FFCCA424 @003DFCCA". In the MCP itself the PC
+     * starts with FF, which also tells it. */
+    if (address_expected) {
+        sprintf(message, "\x13 %s PC %08lX @%08lX", name, panic_pc, panic_address);
+    } else {
+        sprintf(message, "\x13 %s PC %08lX", name, panic_pc);
+    }
+
+    log_num(LOG_ERROR, "PANIC, exception ", panic_number);
+    log_num(LOG_ERROR, "PANIC, PC ", (int)panic_pc);
+    if (address_expected) {
+        log_num(LOG_ERROR, "PANIC, address ", (int)panic_address);
+    }
+
+    /* The text layer must be visible, also over graphics a program may have switched on */
+    if (!(*VKY3_B_MCR & VKY3_B_MCR_TEXT)) {
+        *VKY3_B_MCR = *VKY3_B_MCR | VKY3_B_MCR_TEXT | VKY3_B_MCR_TXT_OVR;
+    }
+
+    panic_bar(VKY3_B_TEXT_MATRIX, VKY3_B_COLOR_MATRIX, 0, message, hint);
+    panic_bar(VKY3_A_TEXT_MATRIX, VKY3_A_COLOR_MATRIX, 1, message, hint);
+
+    /* Forget keys that were waiting, then wait for a new one */
+    while (chan_status(0) & CDEV_STAT_READABLE) {
+        chan_read_b(0);
+    }
+    chan_read_b(0);
+}
+#else
+void panic(void) {
+    panic_box();
+}
+#endif
 
 /*
  * Set the maximum level of verbosity in logging.
