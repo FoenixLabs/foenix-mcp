@@ -9,6 +9,7 @@ SDK must give the same numbers and the same record layouts as the MCP's sources.
 runs this before it builds: a change on one side only stops the build, with a list of what differs.
 
 What is compared:
+  - the SDK's version (MCP_SDK_VERSION_...) is the MCP's (src/version.h)
   - the system call numbers (KFN_...): the same names with the same numbers on both sides
   - every system call the MCP's dispatcher handles has a function in sdk/calypsi/src/mcp_syscalls.c
     (not the network, KFN_NET_..., which is FELINC's felinc_mcp.a, and not KFN_WARMBOOT)
@@ -26,6 +27,7 @@ import re
 import sys
 
 # The MCP's files the SDK follows, per SDK header (paths from the repository folder)
+MCP_VERSION = "src/version.h"
 MCP_SYSCALLS = "src/include/syscalls.h"
 MCP_ERRORS = "src/include/errors.h"
 MCP_INTERRUPT = "src/interrupt.h"
@@ -109,6 +111,14 @@ def main():
         return read_code(os.path.join(repo, path))
 
     problems = []
+
+    # The SDK's version is the version of the MCP it belongs to
+    mcp_version = number_defines(code(MCP_VERSION))
+    sdk_version = number_defines(code(SDK_SYSCALLS))
+    mcp_v = tuple(mcp_version.get("VER_" + part) for part in ("MAJOR", "MINOR", "BUILD"))
+    sdk_v = tuple(sdk_version.get("MCP_SDK_VERSION_" + part) for part in ("MAJOR", "MINOR", "BUILD"))
+    if mcp_v != sdk_v:
+        problems.append("the MCP is version %s, the SDK (MCP_SDK_VERSION_...) %s" % (mcp_v, sdk_v))
 
     # The system call numbers: compare the numeric KFN_ names (the SDK's older names are aliases)
     mcp_kfn = {k: v for k, v in number_defines(code(MCP_SYSCALLS)).items() if k.startswith("KFN_")}

@@ -78,6 +78,25 @@ This copy of the MCP is maintained for the A2560K Gen1, tested on the
 A2560K25 ("A2560Kc"). The flash images for the K25 and the K40 are the same
 build: the MCP finds out at start-up which board it runs on.
 
+### Version 2.1.1: PS/2 Shift fix and a Calypsi SDK
+
+A small release on top of 2.1.0.
+
+**PS/2 keyboard.** After Shift+arrow (or another grey key), Shift no longer
+stays pressed, and with NumLock on the grey keys (arrows, Home, End, Page Up,
+Page Down, Insert, Delete) work again. The keyboard sends an extra "fake
+Shift" code around these keys, and the MCP lost the byte after it.
+
+**Calypsi SDK for programs** (`sdk/calypsi`). It has headers and a library for
+Calypsi programs, matching the MCP. Calypsi's own MCP headers are older than
+2.1.0: their `t_sys_info` is laid out differently and 2.1.0's calls are
+missing. See "Building with Calypsi" below and
+[sdk/calypsi/README.md](sdk/calypsi/README.md). The release has the SDK as a
+zip file.
+
+The MCP calls itself `2.1.1-cache`. lvboot stays at 1.4, and the manual is the
+2.1.0 one.
+
 ### Version 2.1.0: the network in the MCP
 
 The MCP has a TCP/IP stack built in: [FELINC](https://gitlab.com/renekint/felinc),
