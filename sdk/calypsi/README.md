@@ -1,7 +1,8 @@
 # The MCP's Calypsi SDK
 
 Headers and a small library for writing A2560K programs for the MCP with
-Calypsi (`cc68k`). They match MCP 2.1.0.
+Calypsi (`cc68k`). They match MCP 2.1.1, which has the same system calls as
+2.1.0.
 
 Calypsi comes with an SDK of its own (`contrib/A2560K-SDK`, used with
 `--target=A2560K`). Its MCP part is older than MCP 2.1.0:
