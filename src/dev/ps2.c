@@ -715,6 +715,14 @@ static void kbd_process_scan(unsigned char scan_code) {
                 }
                 break;
 
+            /* 2.2.0: E0 2A is the start of PrintScreen (E0 2A E0 37), but a PC keyboard also
+               sends it as a "fake Shift press" around the grey keys (arrows, Home, End, Ins, Del,
+               Page Up/Down): after such a key when Shift is held (E0 2A comes with the key's
+               release), and before it when NumLock is on (E0 2A E0 4B for Left). The byte that
+               follows a fake one is a key of its own: it used to be eaten as a bad code, so the
+               release of Shift after Shift+arrow was lost (Shift stayed down until it was pressed
+               again), and with NumLock on the grey keys did nothing. Now such a byte goes through
+               the state machine again; the fake Shift itself changes nothing. */
             case KBD_ST_E02A:
                 switch (scan_code) {
                     case 0xE0:
@@ -722,8 +730,9 @@ static void kbd_process_scan(unsigned char scan_code) {
                         break;
 
                     default:
-                        // Bad scan-code... reset the machine and just eat the code
+                        // E0 2A was a fake Shift: this byte is a key of its own
                         g_kbd_control.state = KBD_ST_IDLE;
+                        kbd_process_scan(scan_code);
                         break;
                 }
                 break;
@@ -736,8 +745,9 @@ static void kbd_process_scan(unsigned char scan_code) {
                         break;
 
                     default:
-                        // Bad scan-code... reset the machine and just eat the code
-                        g_kbd_control.state = KBD_ST_IDLE;
+                        // E0 2A was a fake Shift, and E0 xx is a grey key: handle xx as after E0
+                        g_kbd_control.state = KBD_ST_E0;
+                        kbd_process_scan(scan_code);
                         break;
                 }
                 break;
