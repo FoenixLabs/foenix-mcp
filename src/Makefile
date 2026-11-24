@@ -400,8 +400,11 @@ ifeq ($(TOOLCHAIN),calypsi68k)
 # calypsi_check.py stops the build when the list files show one of Calypsi 5.18's problems:
 # the multiply-in-place bug (fix: a long index variable) or a narrowed read-modify-write of an
 # I/O register (fix: change a local copy, then write the whole register).
+# check_sdk.py stops the build when the Calypsi SDK for programs (../sdk/calypsi) no longer matches
+# the MCP: system call numbers, error numbers, records such as t_sys_info.
 CALYPSI_RULES = calypsi/$(UNIT)_flash_b$(BLOCK).scm
 foenixmcp.bin: $(DEPS) $(CALYPSI_RULES)
+	$(PYTHON3) ../tools/check_sdk.py ..
 	$(RM) foenixmcp_vectors.raw flash.raw
 	$(LD) -o foenixmcp_vectors.raw $(FILES_TO_LINK) $(CALYPSI_RULES) --output-format=raw \
 		--raw-multiple-memories --rtattr printf=nofloat --list-file=foenixmcp.map --cross-reference
@@ -419,6 +422,7 @@ foenixmcp.s68: $(DEPS)
 	$(CC) $(LDFLAGS) -o $@ $(FILES_TO_LINK)
 
 foenixmcp.bin: $(DEPS)
+	$(PYTHON3) ../tools/check_sdk.py ..
 	$(CC) $(LDFLAGS) -o $@ $(FILES_TO_LINK)
 # TODO Test that the file is <= PAD_FLASH_SIZE bytes otherwise'll be slashing the OS !
 	$(PAD_CMD)
