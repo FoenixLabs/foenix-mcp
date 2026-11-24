@@ -104,3 +104,7 @@ lvboot/build/
 src/rsrc/bitmaps/splash_*.c
 # Output of tools/build_release.sh
 release/
+
+# The Calypsi SDK build output (sdk/calypsi: make)
+sdk/calypsi/obj/
+sdk/calypsi/lib/

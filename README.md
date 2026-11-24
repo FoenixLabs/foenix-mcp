@@ -589,6 +589,14 @@ on) gives the same times for both compilers:
 
 Calypsi's image is also about 14% smaller.
 
+**Calypsi SDK for programs.** The MCP headers in Calypsi's own SDK
+(`contrib/A2560K-SDK`) are older than MCP 2.1.0. For example, its `t_sys_info`
+has a different layout, and `sys_fsys_stat` and `sys_txt_topbar` are missing.
+`sdk/calypsi` has headers and a library that match the MCP. See
+[sdk/calypsi/README.md](sdk/calypsi/README.md). The MCP build runs
+`tools/check_sdk.py`, which stops it when the SDK and the MCP no longer agree
+on system call numbers, error numbers or records.
+
 ### Building on a Mac
 
 On a Mac the MCP is built with VBCC: the `vc` front end, the `vbccm68k`
