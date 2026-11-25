@@ -30,14 +30,16 @@
 #endif
 
 #define MAX_SETTING_NAME    64
-#define MAX_SETTING_HELP    80
+#define MAX_SETTING_HELP    128     /* 2.1.2: longest help line; was 80, the CLOCK line is longer */
 
 /*
  * Structure to hold a setting
  */
 typedef struct s_setting {
     char name[MAX_SETTING_NAME];        /* Name of the setting (in upper case) */
-    char help[MAX_SETTING_HELP];        /* Help line for this setting */
+    char help[MAX_SETTING_HELP + 1];    /* Help line for this setting (2.1.2: + 1 for the terminating 0, which
+                                         * was written past the end and then overwritten by setter, so SET
+                                         * HELP printed garbage after a line of 80 characters or more) */
     cli_setter setter;                  /* The function to set the value of the setting */
     cli_getter getter;                  /* The function to get the value of the setting */
     struct s_setting * next;            /* Pointer to the next registered setting */
