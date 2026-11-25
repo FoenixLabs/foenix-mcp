@@ -78,6 +78,27 @@ This copy of the MCP is maintained for the A2560K Gen1, tested on the
 A2560K25 ("A2560Kc"). The flash images for the K25 and the K40 are the same
 build: the MCP finds out at start-up which board it runs on.
 
+### Version 2.2.0 (in progress): a fast, reliable start after a warm reset
+
+**SD card and hard drive after a warm reset.** Nothing on the board resets the
+SD card: not the reset button, not REBOOT or Ctrl+Alt+Del, not the debug port.
+The reset button does reset the IDE drive, but just before lvboot and the MCP
+start (after a power-on the board waits about 9 s first). After a warm reset
+the start could take a very long time, and the MCP could end with "low level
+disk error" until the next power-on. Now:
+
+- the SD card start-up runs on the slow clock divider, sends CMD0 without
+  first waiting 0.5 s for a "ready" byte a busy card never sends, and is tried
+  three times; a failed start is now reported as a failure;
+- a failed SD read or write is tried again after a new card start (three tries
+  in all), so one bad moment no longer leaves the card unusable;
+- an IDE drive gets up to 10 s to finish its reset (was 1/3 s), and a drive
+  left in the middle of a command gets an ATA software reset;
+- waiting for the SD controller can no longer hang the MCP for ever.
+
+Released together with lvboot 1.5, which has the same SD and IDE fixes (see
+[lvboot/README.md](lvboot/README.md)).
+
 ### Version 2.1.1: PS/2 Shift fix and a Calypsi SDK
 
 A small release on top of 2.1.0.

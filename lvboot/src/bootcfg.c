@@ -255,7 +255,9 @@ void cfg_load(void) {
         } else dbg_printf("bootcfg: no hard drive volume (FatFs %d)\n", rh);
         if (r != FR_OK) {
             rs = f_mount(&fs_sd, "0:", 1);
-            for (tries = 1; rs != FR_OK && tries < 3; tries++) { delay_ms(300); rs = f_mount(&fs_sd, "0:", 1); }
+            /* 1.5: try again only when the card started but a read failed (FR_DISK_ERR). When it did not start
+               (FR_NOT_READY) disk_initialize() has already tried three times, and an empty slot never starts. */
+            for (tries = 1; rs == FR_DISK_ERR && tries < 3; tries++) { delay_ms(300); rs = f_mount(&fs_sd, "0:", 1); }
             if (rs == FR_OK) {
                 cfg_state = CFG_NO_FILE;
                 r = f_open(&f, "0:" CFG_NAME, FA_READ);

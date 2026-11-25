@@ -25,8 +25,8 @@
 
 /* The SDK's version: the MCP version it belongs to */
 #define MCP_SDK_VERSION_MAJOR   2
-#define MCP_SDK_VERSION_MINOR   1
-#define MCP_SDK_VERSION_BUILD   1
+#define MCP_SDK_VERSION_MINOR   2
+#define MCP_SDK_VERSION_BUILD   0
 
 /*
  * System call function numbers

@@ -1,5 +1,13 @@
 # Gen1 LVGL boot loader (K25 first)
 
+**1.5 (2026-11-25):** a fast start after a warm reset. Nothing on the board resets the SD card (not the reset button,
+not REBOOT, not a debug-port release), and the reset button resets the IDE drive just before lvboot runs (after a
+power-on the board waits about 9 s first). lvboot 1.4 could then take a very long time at "reading boot.cfg".
+Now: the CMD12 that stops a card left in a multi-block read goes out with the card selected (1.4 sent it with the card
+not selected, so the card never heard it); CMD0 no longer waits for a "ready" byte first; an empty SD slot is seen at
+once (card-detect pin); the SD card is mounted again only after a read error, not after a failed start; an IDE drive
+gets up to 10 s to finish its reset (was 3 s), and a drive left in the middle of a command gets an ATA software reset.
+
 **1.4 (2026-11-21):** an entry shows the name its flash block gives itself, so lvboot never needs to know how a
 program is called. Any program in a flash block (the MCP, EmuTOS, ...) can carry a block info record in its 680x0
 vector table, vectors 16-23 (offset `$40`-`$5F` of the block): Motorola reserved these on every 680x0 (68000 up to
