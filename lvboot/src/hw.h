@@ -66,6 +66,14 @@
 #define SDX_CS          0x01
 #define SDX_SLOW        0x02
 #define SDX_BUSY        0x80
+/* 1.5: SD card-detect pin (1 = slot empty), in the DIP switch register as the MCP reads it (sdc_new.c SD0_STAT) */
+#if defined(MACHINE_X40) || defined(MACHINE_X60)
+# define SD_CD_REG      REG16(0xFEC0051A)
+# define SD_CD_EMPTY    0x0100
+#else
+# define SD_CD_REG      REG32(0xFEC00518)   /* GABE_DIP_REG bit 24 (K25 hardware reference: SD_CD, 0 = card present) */
+# define SD_CD_EMPTY    0x01000000UL
+#endif
 
 /* SuperIO (LPC, SMSC, same chip and ports as the A2560Me) */
 #define GAVIN_LPC_RSTN  0x00000100UL

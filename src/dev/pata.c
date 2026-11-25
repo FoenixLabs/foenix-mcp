@@ -215,21 +215,79 @@ short pata_identity(p_drive_info drive_info) {
     return 0;
 }
 
-//
-// Initialize the PATA hard drive
-//
-// Returns:
-//  0 on success, any negative number is an error code
-//
+#define PATA_DEVCTRL    ((volatile unsigned char *)0xFEC0041C)  /* Device Control (CS1 register 6) */
+#define PATA_DC_NIEN    0x02                /* the drive does not drive INTRQ (Gen1 has INTRQ wired the wrong way) */
+#define PATA_DC_SRST    0x04                /* software reset of the drive */
+#define PATA_RESET_JF   600                 /* 10 s: how long a drive may stay busy after a reset */
+
+/*
+ * pata_wait_reset_done - wait until a drive that was just reset is no longer busy
+ *
+ * Input:  none
+ * Output: 0 = the drive is no longer busy, DEV_TIMEOUT = no drive (the port reads $FF / $7F) or still busy after 10 s
+ *
+ * Why: pata_wait_not_busy() gives a drive 1/3 s, enough between commands but not after a reset. The reset button
+ * (and REBOOT) resets the drive just before lvboot and the MCP start, and ATA allows a drive up to 31 s to come
+ * back; after a power-on the board itself waits about 9 s, which is why a cold start never had this problem.
+ */
+static short pata_wait_reset_done() {
+    long target_ticks = rtc_get_jiffies() + PATA_RESET_JF;
+    unsigned char status;
+
+    do {
+        status = *PATA_CMD_STAT;
+        if (status == 0xFF || status == 0x7F) {
+            return DEV_TIMEOUT;             /* nothing on the port: the bus floats high */
+        }
+        if ((status & PATA_STAT_BSY) == 0) {
+            return 0;
+        }
+    } while (target_ticks > rtc_get_jiffies());
+
+    logmsg(LOG_ERROR, "pata_wait_reset_done: drive still busy");
+    return DEV_TIMEOUT;
+}
+
+/*
+ * pata_init - start the PATA hard drive
+ *
+ * Input:  none
+ * Output: 0 on success, any negative number is an error code
+ *
+ * 2.2.0: a drive the reset button has just reset gets up to 10 s to finish (pata_wait_reset_done). A drive that
+ * was NOT reset (the debug port restarts only the CPU) may still be in the middle of a command, waiting for data
+ * that will never come: when it shows a data request or an error, it gets an ATA software reset first.
+ */
 short pata_init() {
     short result;
+    unsigned char status;
 
     TRACE("pata_init");
 
     /* 2.0.18 (2026-11-05): Gen1 boards have INTRQ wired the wrong way (U26 drives IDE pin 31 from the FPGA side): tell
        the drive not to drive INTRQ at all (Device Control, CS1 register 6: nIEN = 1), so the two outputs never fight.
        The MCP polls the status register, it does not use the interrupt. */
-    *((volatile unsigned char *)0xFEC0041C) = 0x02;
+    *PATA_DEVCTRL = PATA_DC_NIEN;
+
+    if (pata_wait_reset_done()) {
+        return DEV_TIMEOUT;
+    }
+
+    status = *PATA_CMD_STAT;
+    if (status & (PATA_STAT_DRQ | PATA_STAT_ERR | PATA_STAT_DF)) {
+        long target_ticks;
+
+        logmsg(LOG_ERROR, "pata_init: drive not idle, software reset");
+        *PATA_DEVCTRL = PATA_DC_NIEN | PATA_DC_SRST;
+        target_ticks = rtc_get_jiffies() + 2;           /* ATA: SRST high for at least 5 us (2: at least one whole jiffy) */
+        while (target_ticks > rtc_get_jiffies()) ;
+        *PATA_DEVCTRL = PATA_DC_NIEN;
+        target_ticks = rtc_get_jiffies() + 2;           /* the drive sets BSY within 400 ns: wait well past that */
+        while (target_ticks > rtc_get_jiffies()) ;
+        if (pata_wait_reset_done()) {
+            return DEV_TIMEOUT;
+        }
+    }
 
     // Issue intialize command
     *PATA_CMD_STAT = PATA_CMD_INIT;

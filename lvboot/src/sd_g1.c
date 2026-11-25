@@ -8,6 +8,13 @@
  * reading it back): BLK_CMD = N << 16 | 1 takes N data packets (token, 512 bytes, CRC16 checked) into the FIFO.
  * The engine is not reset by a CPU-only reset, and a card left inside CMD25 needs the STOP_TRAN token: both are
  * cleared first (as MCP 2.0.19).
+ *
+ * 1.5 (2026-11-25): nothing on the board ever resets the SD card - not the reset button, not REBOOT, not a debug-port
+ * release - so after a warm reset the card is still in whatever state the last program left it. Booting then took a
+ * very long time: the CMD12 that should stop a card still inside a multi-block read went out with the card NOT
+ * selected (the card ignores it), and every CMD0 first waited 0.5 s for a "ready" byte that a card still sending
+ * data never gives. Now CMD12 goes out with CS on, CMD0 is sent without the ready wait, an empty slot is seen at once
+ * (card-detect pin) and one disk_initialize() takes a few seconds at most.
  */
 #include "hw.h"
 #include "board.h"
@@ -65,7 +72,28 @@ static int select_card(void) {
     return 0;
 }
 
-/* returns the R1 response (bit 7 set = no answer) */
+/*
+ * card_present - is there a card in the slot?
+ *
+ * Input:  none
+ * Output: 1 = the card-detect pin says a card is in the slot, 0 = the slot is empty
+ *
+ * Why: without a card every command times out; checking the pin first makes an empty slot cost nothing.
+ */
+static int card_present(void) {
+    return (SD_CD_REG & SD_CD_EMPTY) ? 0 : 1;
+}
+
+/*
+ * send_cmd - send one command to the card and read its first answer byte
+ *
+ * Input:  cmd = command number (ACMDn = $80 + n: CMD55 is sent first), arg = the 32-bit argument
+ * Output: the R1 response (bit 7 set = no answer)
+ *
+ * CMD12 is sent on the card as it is selected now (it must reach a card that is in the middle of sending data).
+ * CMD0 selects the card without waiting for it to be ready: a card left in the middle of a read never sends the
+ * $FF "ready" byte, and CMD0 is the command that brings it back.
+ */
 static uint8_t send_cmd(uint8_t cmd, uint32_t arg) {
     uint8_t r, n;
     if (cmd & 0x80) {               /* ACMDn = CMD55 + CMDn */
@@ -73,7 +101,11 @@ static uint8_t send_cmd(uint8_t cmd, uint32_t arg) {
         r = send_cmd(CMD55, 0);
         if (r > 1) return r;
     }
-    if (cmd != CMD12) {
+    if (cmd == CMD0) {
+        deselect();
+        SD_CTRL |= SDX_CS;
+        xchg(0xFF);
+    } else if (cmd != CMD12) {
         deselect();
         if (!select_card()) return 0xFF;
     }
@@ -137,9 +169,19 @@ DRESULT ide_disk_read(BYTE * buff, LBA_t sector, UINT count);
 DRESULT ide_disk_write(const BYTE * buff, LBA_t sector, UINT count);
 DRESULT ide_disk_ioctl(BYTE cmd, void * buff);
 
+/*
+ * disk_initialize - FatFs: start the SD card (volume 0) or the IDE drive (volume 1)
+ *
+ * Input:  pdrv = 0 for the SD card, 1 for the IDE drive
+ * Output: 0 = ready, STA_NOINIT = no card / the card does not answer
+ *
+ * The card may still be in the middle of something from before a warm reset (see the top of the file), so first
+ * everything it could be busy with is ended: a multi-block write (STOP_TRAN token), a multi-block read (CMD12, card
+ * selected), then CMD0 puts it back into the idle state and the normal SD start-up follows. Three tries in all.
+ */
 DSTATUS disk_initialize(BYTE pdrv) {
     if (pdrv == 1) return ide_disk_initialize();
-    uint8_t ocr[4], ty = 0, cmd, r0;
+    uint8_t ocr[4], ty = 0, cmd, r0 = 0xFF;
     int i, tries;
     uint32_t t0;
 
@@ -149,15 +191,23 @@ DSTATUS disk_initialize(BYTE pdrv) {
     engine = (SD_CLKDIV == 0x0000000AUL);
     if (engine) { SD_CLKDIV = 1; SD_BLKCMD = 3; }       /* K60 (11-07): the reset divider during the card start-up, as the
                                                            MCP does (CLKDIV 0 before it: CMD0 answered $4F on the K60) */
+    if (!card_present()) {
+        SD_CTRL = 0;
+        if (engine) SD_CLKDIV = 0;
+        card_type = 0;
+        stat = STA_NOINIT;
+        dbg_printf("sd: slot empty\n");
+        return stat;
+    }
     for (tries = 0; tries < 3 && !ty; tries++) {        /* the first try after a warm reset can fail */
         SD_CTRL = SDX_SLOW | SDX_CS;                    /* a card left inside CMD25: STOP_TRAN, then let it finish */
         xchg(0xFD);
-        wait_ready(500);
+        wait_ready(250);
+        send_cmd(CMD12, 0);                             /* 1.5: still selected - a card left inside a multi-block read
+                                                           only hears CMD12 with CS on (1.4 sent it with CS off) */
+        wait_ready(250);
         SD_CTRL = SDX_SLOW;
-        delay_ms(10);
         for (i = 0; i < 10; i++) xchg(0xFF);            /* 80 clocks with CS high */
-        send_cmd(CMD12, 0);                             /* a card left inside a multi-block read */
-        deselect();
 #ifdef SDTRACE
         {   uint8_t rb[12]; int k;
             deselect(); select_card();
@@ -214,7 +264,8 @@ DSTATUS disk_initialize(BYTE pdrv) {
     if (engine) SD_CLKDIV = 0;      /* 12.5 MHz (K25) / 16.7 MHz (K60) after the start-up */
     card_type = ty;
     stat = ty ? 0 : STA_NOINIT;
-    dbg_printf("sd: %s, %s, engine %s\n", ty ? "card ready" : "NO CARD", (ty & CT_BLOCK) ? "block addressing" : "byte addressing",
+    dbg_printf("sd: %s after %d tr%s, %s, engine %s\n", ty ? "card ready" : "card does not answer", tries,
+               tries == 1 ? "y" : "ies", (ty & CT_BLOCK) ? "block addressing" : "byte addressing",
                engine ? "yes" : "no");
     return stat;
 }

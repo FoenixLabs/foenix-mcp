@@ -143,12 +143,19 @@ unsigned char g_sdc_error = 0;
 /*-----------------------------------------------------------------------*/
 /* Transmit Busy Flag Check - SPI Controler 0                          */
 /*-----------------------------------------------------------------------*/
+/*
+ * SD0_Wait_SDx_Busy - wait until the SPI controller has shifted its byte
+ *
+ * Input:  none
+ * Output: none
+ *
+ * 2.2.0: bounded. A byte takes at most 28 us (slow clock); 100000 reads are far more than that, so the loop only
+ * ends on the count when the controller is stuck, and then the MCP goes on instead of hanging for ever.
+ */
 static void SD0_Wait_SDx_Busy( void ) {
-	unsigned char i;
-	i = (*SD0_CTRL & SDx_BUSY);
-	do {
-		i = (*SD0_CTRL & SDx_BUSY);
-	} while (i == SDx_BUSY);
+	unsigned long n = 100000;
+	(void)*SD0_CTRL;
+	while ((*SD0_CTRL & SDx_BUSY) && --n) ;
 }
 
 /*-----------------------------------------------------------------------*/
@@ -305,9 +312,15 @@ static unsigned char SD0_Tx_cmd ( unsigned char cmd, unsigned long arg ) {
       return n;
 	}
 
-	/* Select the card and wait for ready except to stop multiple block read */
-	if (cmd != CMD12) {
-		//printf("Processing Command: %d\r", cmd);		
+	/* Select the card and wait for ready except to stop multiple block read.
+	   2.2.0: CMD0 selects the card WITHOUT waiting for ready: after a warm reset a card left in the middle of a
+	   read keeps sending data and never gives the $FF "ready" byte, so every CMD0 waited 0.5 s for nothing.
+	   CMD0 is the command that brings such a card back to idle. */
+	if (cmd == CMD0) {
+		SD0_deselect();
+		*SD0_CTRL = *SD0_CTRL | SDx_CS;
+		SD0_Rx(&d, 1);
+	} else if (cmd != CMD12) {
 		SD0_deselect();
 		if (!SD0_select()) 
       return 0xFF;
@@ -376,10 +389,18 @@ unsigned char disk_status ( BYTE drv ) {
 */
 
 
-/*-----------------------------------------------------------------------*/
-/* Initialize Disk Drive                                                 */
-/*-----------------------------------------------------------------------*/
-
+/*
+ * new_disk_initialize - bring the SD card into SPI mode and ready for reads and writes
+ *
+ * Input:  drv = physical drive number (always 0: one SD card)
+ * Output: 0 = the card is ready, STA_NOINIT = the card did not start
+ *
+ * 2.2.0: nothing on the board ever resets the SD card (not the reset button, not REBOOT, not a debug-port release),
+ * so after a warm reset the card can still be in the middle of what the last program did. Everything it could be
+ * busy with is ended first (STOP_TRAN token for a multi-block write, CMD12 for a multi-block read), then CMD0 puts it
+ * back to idle. The start-up runs with the slow SPI clock and, with the block engine, its reset clock divider (the
+ * previous program left the fast one), and is tried three times in all, as lvboot 1.5 does.
+ */
 unsigned char new_disk_initialize (
 	unsigned char drv		/* Physical drive nmuber (0) */
 )
@@ -387,16 +408,28 @@ unsigned char new_disk_initialize (
 	unsigned char n, ty, cmd, buf[4];
 	unsigned int tmr;
 	unsigned char s;
+	short tries;
 
-	//printf("Init Drive %d\r", drv);	
 	*SD0_BLKCMD = 3;		/* 2.0.19: FIRST: abort a G1_SDC block command left running (its BUSY blocks every byte
 	                		   transfer, including the dummy clocks below); the old controller ignores this write */
-	dly_us(10000);			/* 10ms */
-    *SD0_CTRL = *SD0_CTRL | SDx_SLOW;   // Set the SPI in Slow Mode
+
+	/* 2.0.15: the G1_SDC block engine? Its CLKDIV register keeps what is written; the old controller answers
+	   a long read at +4 with its control byte on all four lanes. 2.2.0: found BEFORE the start-up, so the
+	   start-up can run on the reset divider (1) instead of the fast one a previous program left behind. */
+	*SD0_CLKDIV = 0x0000000A;
+	g_sdc_blk = (*SD0_CLKDIV == 0x0000000A) ? 1 : 0;
+	if (g_sdc_blk) {
+		*SD0_CLKDIV = 1;
+		*SD0_BLKCMD = 3;		/* empty the FIFO, clear the status */
+	}
+
+	ty = 0;
+	for (tries = 0; tries < 3 && !ty; tries++) {
+	  if (tries) for (tmr = 100; tmr; tmr--) dly_us(1000);	/* 100 ms before the next try */
+	  *SD0_CTRL = SDx_SLOW;		/* slow clock, card not selected */
 	  for (n = 10; n; n--) {
 	  	SD0_Rx(buf, 1);	/* Apply 80 dummy clocks and the card gets ready to receive command */
 	  }
-	  ty = 0;
 	  /* 2.0.14: a card left in the middle of a multi-block read (CPU restarted by the debug port or a reset button
 	     while reading) does not answer CMD0: STOP_TRANSMISSION first (with CS on), let it finish, then CMD0 retries */
 	  /* 2.0.17: G1_SDC block engine left running by a restarted program: abort it (the old controller ignores this
@@ -441,20 +474,19 @@ unsigned char new_disk_initialize (
 	  			ty = 0;
 	  	}
 	  }
+	  SD0_deselect();
+	}
       *SD0_CTRL = *SD0_CTRL & ~SDx_SLOW;   // Bring back the Fast Mode - 25Mhz
 
-	  /* 2.0.15: the G1_SDC block engine? Its CLKDIV register keeps what is written; the old controller answers
-	     a long read at +4 with its control byte on all four lanes. Then 12.5 MHz (half period 1 bus clock). */
-	  *SD0_CLKDIV = 0x0000000A;
-	  g_sdc_blk = (*SD0_CLKDIV == 0x0000000A) ? 1 : 0;
 	  if (g_sdc_blk) {
-	  	*SD0_CLKDIV = 0;
+	  	*SD0_CLKDIV = 0;		/* 12.5 MHz (half period 1 bus clock) now the card runs */
 	  	*SD0_BLKCMD = 3;		/* empty the FIFO, clear the status */
 	  }
 
 	  SD0_CardType = ty;
 	  s = ty ? 0 : STA_NOINIT;
 	  g_sdc_status = s;
+	  g_sdc_error = s ? 1 : 0;	/* 2.2.0: sdc_init_n() reads this; it was never set, so a failed start counted as OK */
 	  SD0_deselect();
 	
 	//DEBUG1("sdc_init: sdtype=0x%x", (unsigned char)ty);
@@ -623,7 +655,7 @@ short sdc_init_n() {
         return DEV_NOMEDIA;
     }
 	new_disk_initialize( 0x00 ); // One SDCard in the system, so Device is 0
-							// The disk init directly sets the g_sdc_error
+							// The disk init directly sets the g_sdc_error (2.2.0: it really does now)
 
     if ( g_sdc_error ) { // if g_sdc_error == 1 - STA_NOINIT
         logmsg(LOG_ERROR, "sdc_init: DEV_CANNOT_INIT");
@@ -647,7 +679,7 @@ short sdc_init_n() {
 // Returns:
 //  number of bytes read, any negative number is an error code
 //
-short sdc_read_n(long lba, unsigned char * buffer, short size) {
+static short sdc_read_once(long lba, unsigned char * buffer, short size) {
 	unsigned char status;
 	unsigned char cmd;
 	unsigned long sect = (unsigned long)lba;
@@ -657,7 +689,7 @@ short sdc_read_n(long lba, unsigned char * buffer, short size) {
 	if (!g_sdc_blk && Count > 1) {
 		unsigned short k;
 		for (k = 0; k < Count; k++) {
-			short r = sdc_read_n(lba + k, buffer + 512 * k, 512);
+			short r = sdc_read_once(lba + k, buffer + 512 * k, 512);
 			if (r < 0) return r;
 		}
 		return size;
@@ -776,7 +808,7 @@ short sdc_read_n(long lba, unsigned char * buffer, short size) {
 // Returns:
 //  number of bytes written, any negative number is an error code
 //
-short sdc_write_n(long lba, const unsigned char * buffer, short size) {
+static short sdc_write_once(long lba, const unsigned char * buffer, short size) {
 	unsigned char status;
 	unsigned long sect = (unsigned long)lba;
 	unsigned short count = size >> 9;	// Count is the number of packet of 512bytes
@@ -784,7 +816,7 @@ short sdc_write_n(long lba, const unsigned char * buffer, short size) {
 	if (!g_sdc_blk && count > 1) {
 		unsigned short k;
 		for (k = 0; k < count; k++) {
-			short r = sdc_write_n(lba + k, buffer + 512 * k, 512);
+			short r = sdc_write_once(lba + k, buffer + 512 * k, 512);
 			if (r < 0) return r;
 		}
 		return size;
@@ -880,6 +912,47 @@ short sdc_write_n(long lba, const unsigned char * buffer, short size) {
 		break;
 	}
 }
+
+/*
+ * sdc_read_n - read sectors from the SD card, starting the card again when a read fails
+ *
+ * Input:  lba = first sector, buffer = where the data goes, size = number of bytes (a multiple of 512)
+ * Output: size when all is read, or a negative error code (DEV_NOMEDIA, DEV_CANNOT_READ, ...)
+ *
+ * 2.2.0: a read that fails is tried again after a full card start (new_disk_initialize), three tries in all, as
+ * lvboot does. Before, one failed start (for example after a warm reset) left the card unusable until the next
+ * power-on: every read failed and the MCP reported "low level disk error".
+ */
+short sdc_read_n(long lba, unsigned char * buffer, short size) {
+	short r = DEV_CANNOT_READ;
+	short t;
+	for (t = 0; t < 3; t++) {
+		if (t && new_disk_initialize(0)) break;		/* the card does not start again: give up at once */
+		r = sdc_read_once(lba, buffer, size);
+		if (r >= 0 || r == DEV_NOMEDIA) break;		/* done, or no card in the slot: trying again will not help */
+	}
+	return r;
+}
+
+/*
+ * sdc_write_n - write sectors to the SD card, starting the card again when a write fails
+ *
+ * Input:  lba = first sector, buffer = the data, size = number of bytes (a multiple of 512)
+ * Output: size when all is written, or a negative error code (DEV_NOMEDIA, DEV_CANNOT_WRITE, ...)
+ *
+ * 2.2.0: as sdc_read_n. Writing the same sectors again is harmless: they get the same data.
+ */
+short sdc_write_n(long lba, const unsigned char * buffer, short size) {
+	short r = DEV_CANNOT_WRITE;
+	short t;
+	for (t = 0; t < 3; t++) {
+		if (t && new_disk_initialize(0)) break;
+		r = sdc_write_once(lba, buffer, size);
+		if (r >= 0 || r == DEV_NOMEDIA) break;
+	}
+	return r;
+}
+
 //
 // Return the status of the SDC
 //

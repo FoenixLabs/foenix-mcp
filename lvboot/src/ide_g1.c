@@ -10,6 +10,12 @@
  *     and everything is polled.
  *   - the 16-bit data register puts the drive's first byte at the even address: right for sector data as it is
  *     (FatFs reads the sectors directly), only the 16-bit values of IDENTIFY would be swapped (not used here).
+ *
+ * 1.5 (2026-11-25): after a power-on the FPGA holds the board in reset for about 9 s, so the drive is long ready when
+ * lvboot starts. The reset button (and REBOOT) resets the drive too, but lvboot starts right away: the drive can be
+ * busy for several seconds (ATA allows up to 31 s). A debug-port release does not reset the drive at all, so it can
+ * still be in the middle of a command. Now a present drive gets up to 10 s to finish its reset, and a drive that
+ * is not idle (data request or error still set) gets an ATA software reset first.
  */
 #include <stdint.h>
 #include "ff.h"
@@ -33,13 +39,21 @@
 #define ST_DRQ          0x08
 #define ST_ERR          0x01
 
+#define DC_NIEN         0x02                /* device control: the drive does not drive INTRQ */
+#define DC_SRST         0x04                /* device control: software reset of the drive */
+
 #define CMD_READ        0x20
 #define CMD_WRITE       0x30
 #define CMD_FLUSH       0xE7
 
 static DSTATUS ide_stat = STA_NOINIT;
 
-/* wait until BSY is clear; 0 = time-out (or no drive: the bus floats to $FF / $7F) */
+/*
+ * wait_not_busy - wait until the drive is no longer busy
+ *
+ * Input:  ms = how long to wait at most, in milliseconds
+ * Output: 1 = BSY is clear, 0 = time-out or no drive (an empty port reads $FF or $7F)
+ */
 static int wait_not_busy(uint32_t ms) {
     uint32_t t0 = board_ms();
     uint8_t s;
@@ -77,16 +91,52 @@ static int set_lba(uint32_t lba) {
     return 1;
 }
 
+/*
+ * soft_reset - ATA software reset: the drive drops whatever command it was in and starts again
+ *
+ * Input:  none
+ * Output: 1 = the drive is idle again, 0 = it stayed busy for 10 s
+ *
+ * Why: after a debug-port release the drive was not reset and may still wait for a transfer that will never come.
+ */
+static int soft_reset(void) {
+    IDE_DEVCTRL = DC_NIEN | DC_SRST;
+    delay_us(10);                           /* ATA: SRST high for at least 5 us */
+    IDE_DEVCTRL = DC_NIEN;
+    delay_ms(2);                            /* ATA: the drive sets BSY within 400 ns; wait well past that */
+    return wait_not_busy(10000);
+}
+
+/*
+ * ide_disk_initialize - FatFs: start the IDE drive (volume 1)
+ *
+ * Input:  none
+ * Output: 0 = the drive answers and sector 0 can be read, STA_NOINIT = no drive or it does not answer
+ */
 DSTATUS ide_disk_initialize(void) {
     uint8_t buf[512];
+    uint8_t s;
     int i;
     uint16_t * w = (uint16_t *)buf;
 
     ide_stat = STA_NOINIT;
-    IDE_DEVCTRL = 0x02;                     /* nIEN: the drive leaves INTRQ alone (Gen1 has no INTRQ input) */
-    if (!wait_not_busy(3000)) {             /* a drive that is still spinning up gets 3 s */
-        dbg_printf("ide: no drive (status $%02X)\n", IDE_CMD);
+    IDE_DEVCTRL = DC_NIEN;                  /* nIEN: the drive leaves INTRQ alone (Gen1 has no INTRQ input) */
+    s = IDE_CMD;
+    if (s == 0xFF || s == 0x7F) {           /* nothing on the port (the bus floats high): no need to wait */
+        dbg_printf("ide: no drive (status $%02X)\n", s);
         return ide_stat;
+    }
+    if (!wait_not_busy(10000)) {            /* 1.5: a drive just reset by the reset button gets 10 s (was 3 s) */
+        dbg_printf("ide: drive stays busy (status $%02X)\n", IDE_CMD);
+        return ide_stat;
+    }
+    s = IDE_CMD;
+    if (s & (ST_DRQ | ST_ERR | ST_DF)) {    /* left in the middle of something: start it again */
+        dbg_printf("ide: drive not idle (status $%02X), software reset\n", s);
+        if (!soft_reset()) {
+            dbg_printf("ide: drive stays busy after the reset (status $%02X)\n", IDE_CMD);
+            return ide_stat;
+        }
     }
     /* proof that a drive answers: read sector 0 (the MBR) */
     if (!set_lba(0)) return ide_stat;
