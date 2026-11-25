@@ -75,6 +75,12 @@ localparam 		CPU_SPEED_ID 	= 4'b0010,	// 2 = 25Mhz
     info->fpga_version = *GABE_CHIP_VERSION & GABE_CHIP_V_MASK;
     info->fpga_subver = (gabe_id & GABE_CHIP_SV_MASK) >> 16;
 
+#if MODEL == MODEL_FOENIX_A2560K
+    /* 2.1.1: the A2560K has 4 MB of SRAM, the memory the MCP and programs use (the 12 MB above was
+     * wrong for it). Its 64 MB of SDRAM is not counted: the MCP does not use it yet. */
+    info->system_ram_size = 4l * 1024l * 1024l;
+#endif
+
 #elif MODEL == MODEL_FOENIX_A2560U || MODEL == MODEL_FOENIX_A2560U_PLUS
     // All A2560Us made are actually A2560U+s
     // TODO: actually get this from GABE
