@@ -183,9 +183,8 @@ short chan_get_records(short channel, p_channel * chan, p_dev_chan * cdev) {
 //
 short cdev_init(short dev) {
     short ret = DEV_ERR_BADDEV;
-    long d = dev;                       /* long index: Calypsi 5.18 miscompiles a short index into this table (tools/calypsi_check.py) */
     if (dev < CDEV_DEVICES_MAX) {
-        p_dev_chan cdev = &g_channel_devs[d];
+        p_dev_chan cdev = &g_channel_devs[dev];
         if (cdev->number == dev)
             ret = cdev->init ? cdev->init() : 0;
     }
@@ -207,14 +206,13 @@ short chan_open(short dev, const uint8_t * path, short mode) {
     short result;
     p_channel chan;
     p_dev_chan cdev;
-    long d = dev;                       /* long index: Calypsi 5.18 miscompiles a short index into this table (tools/calypsi_check.py) */
 
     TRACE("chan_open");
     log_num(LOG_DEBUG, "dev = ", dev);
 
     if (dev < CDEV_DEVICES_MAX) {
         /* Get the device record */
-        cdev = &g_channel_devs[d];
+        cdev = &g_channel_devs[dev];
         if (cdev->number != dev) {
             /* Double check we have a real device */
             return DEV_ERR_BADDEV;

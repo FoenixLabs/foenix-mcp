@@ -397,18 +397,19 @@ ifeq ($(TOOLCHAIN),calypsi68k)
 # give two raw files, the vector table (foenixmcp_vectors.raw) and the code (flash.raw, named
 # after the memory); ../tools/calypsi_image.py puts them into the 512 KB block image.
 # The library: printf without floating point (as VBCC's). foenixmcp.map: placement and symbols.
-# calypsi_check.py stops the build when the list files show one of Calypsi 5.18's problems:
-# the multiply-in-place bug (fix: a long index variable) or a narrowed read-modify-write of an
-# I/O register (fix: change a local copy, then write the whole register).
+# The image needs Calypsi 5.18.5 or newer: older versions miscompile code the MCP has (a constant
+# comparison inside &&, a byte write for "*REG |= bit", a 16-bit index multiplied in place, a
+# bit test of a long read from the wrong word). The first command stops the build on such a version.
 # check_sdk.py stops the build when the Calypsi SDK for programs (../sdk/calypsi) no longer matches
 # the MCP: system call numbers, error numbers, records such as t_sys_info.
 CALYPSI_RULES = calypsi/$(UNIT)_flash_b$(BLOCK).scm
 foenixmcp.bin: $(DEPS) $(CALYPSI_RULES)
+	@$(CC) --version | awk '/version/ { split($$NF, v, "."); \
+		if (v[1] * 10000 + v[2] * 100 + v[3] < 51805) { print "Calypsi " $$NF ": 5.18.5 or newer is needed"; exit 1 } }'
 	$(PYTHON3) ../tools/check_sdk.py ..
 	$(RM) foenixmcp_vectors.raw flash.raw
 	$(LD) -o foenixmcp_vectors.raw $(FILES_TO_LINK) $(CALYPSI_RULES) --output-format=raw \
 		--raw-multiple-memories --rtattr printf=nofloat --list-file=foenixmcp.map --cross-reference
-	$(PYTHON3) ../tools/calypsi_check.py $(DEPS:%.o=%.lst)
 	$(PYTHON3) ../tools/calypsi_image.py foenixmcp_vectors.raw flash.raw $@ --size $(PAD_FLASH_SIZE)
 	$(PYTHON3) ../tools/block_name.py $@ "$(MCP_NAME)"
 

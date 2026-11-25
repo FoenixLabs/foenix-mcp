@@ -96,6 +96,11 @@ disk error" until the next power-on. Now:
   left in the middle of a command gets an ATA software reset;
 - waiting for the SD controller can no longer hang the MCP for ever.
 
+**Calypsi 5.18.5.** The MCP is built with Calypsi 5.18.5 or newer, which
+fixes the last compiler faults that 2.1.x worked around. The workarounds and
+`tools/calypsi_check.py` are gone, and the build stops with an older Calypsi
+(see "Building with Calypsi").
+
 Released together with lvboot 1.5, which has the same SD and IDE fixes (see
 [lvboot/README.md](lvboot/README.md)).
 
@@ -580,7 +585,7 @@ bottom of the screen.
 
 ### Building with Calypsi (2.1.0)
 
-The MCP is built with Calypsi (`cc68k`, `as68k`, `ln68k`, version 5.18.4 or
+The MCP is built with Calypsi (`cc68k`, `as68k`, `ln68k`, version 5.18.5 or
 newer); it is needed to build FELINC into the MCP. Only the A2560K K25 / K40
 in flash block 1 has Calypsi linker rules so far
 (`src/calypsi/a2560k_flash_b1.scm`). `COMPILER=vbcc` still builds with VBCC,
@@ -598,20 +603,14 @@ make UNIT=a2560k BLOCK=1 CACHE=1
 The link step gives two raw files, which `tools/calypsi_image.py` puts into
 the 512 KB image `src/foenixmcp.bin`, the same as with VBCC.
 
-**Compiler checks.** Before the image is made, `tools/calypsi_check.py` reads
-the list files (`.lst`) for code that Calypsi is known to get wrong, and stops
-the build if it finds some. It knows which problem is fixed in which version
-of the compiler:
-
-| Problem | Fixed in |
-|---|---|
-| a 16-bit index multiplied in place (`mulu.w` / `muls.w`) | 5.18.3 |
-| a bit test on a long read from the wrong address (`move.w <mem>,ccr`) | 5.18.4 |
-| `*reg = *reg \| bit` on a 32-bit I/O register made into a byte `bset.b` / `bclr.b` | not yet |
-
-Also not fixed yet: a comparison of two constants inside `&&` in an `if`
-(`if (MACRO != 0 && x)`) is compiled the wrong way round. The MCP uses
-`#if` for such compile-time switches.
+**Compiler version.** The build stops with an older Calypsi than 5.18.5.
+Older versions miscompile code that is in the MCP: a comparison of two
+constants inside `&&`, `*reg = *reg | bit` on a 32-bit I/O register (made
+into a one-byte `bset.b`), a 16-bit index into a table of records (multiplied
+in place), and a bit test of a long (read from the wrong word). 2.1.x worked
+around these in the C code and checked the compiler's list files with
+`tools/calypsi_check.py`; since 2.2.0 the code is written plainly again and
+the check is gone.
 
 **Speed.** In a large function Calypsi keeps loop values on the stack, and it
 inlines a small function from the same file back into its caller (it ignores

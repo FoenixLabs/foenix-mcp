@@ -396,8 +396,6 @@ short txt_a2560k_b_get_color(unsigned char * foreground, unsigned char * backgro
  * @param vertical the number of rows to scroll (negative is down, positive is up)
  */
 void txt_a2560k_b_scroll(short horizontal, short vertical) {
-    /* int, not short: Calypsi 5.18 multiplies a short y in place in "y * width" and the loop then
-     * goes on with y * width (tools/calypsi_check.py) */
     int x0, x1, x2, x3, dx;
     int y, y0, y1, y2, y3, dy;
     int width, distance, count;
@@ -544,7 +542,7 @@ void txt_a2560k_b_get_xy(p_point position) {
  * @param c the character to print
  */
 void txt_a2560k_b_put(char c) {
-    int x;          /* int: see txt_a2560k_b_scroll */
+    int x;
     int y;
     unsigned int offset;
 
