@@ -70,6 +70,30 @@ CPU numbers, it now gets the right values.
 The network calls (0x80-0x8F) come from FELINC: link FELINC's
 `felinc_mcp.a` and include `felinc.h`.
 
+## Printing fast
+
+Since MCP 2.1.2 the console writes a run of plain characters in one go, so
+give it large pieces of text:
+
+- Calypsi's `stdout` buffer is small (64 bytes), so `printf` reaches the MCP in
+  small pieces. Call `setvbuf(stdout, buf, _IOFBF, 1024)` at the start of
+  `main`, before printing anything (`buf` is a static array of 1024 bytes).
+- Then call `fflush(stdout)` before every MCP call that moves the cursor or
+  changes the region or the colours (`sys_txt_set_xy`, `sys_txt_set_region`,
+  ...), so the text already printed lands in the right place.
+- For a full screen, build each row (text and ANSI colour codes) in a buffer
+  and write it with one `sys_chan_write`. To move the view by a few rows,
+  `sys_txt_scroll` is faster than printing the rows again.
+
+Measured on an A2560K25 at 1024 x 768, one page of 60 rows x 157 characters:
+
+| How | MCP 2.1.1 | MCP 2.1.2 |
+|---|---|---|
+| `printf`, Calypsi's default `stdout` | not measured | 698 ms |
+| `printf` after `setvbuf(..., 1024)` | not measured | 220 ms |
+| each row with one `sys_chan_write` | 870 ms | 91-105 ms |
+| `sys_txt_scroll` by one row | not measured | 19 ms |
+
 ## Building the libraries
 
 On the computer with Calypsi:

@@ -118,6 +118,11 @@ Keys typed on COM1 are read either way.
 characters, no ANSI sequence) now goes to the screen driver at once: it writes
 the characters and sets the cursor once, instead of once per character.
 
+On an A2560K25 at 1024 x 768, a full page of text (60 rows x 157 characters,
+each row written with one `sys_chan_write`) now takes about 105 ms instead of
+870 ms. Programs that print with `printf` gain most with a larger `stdout`
+buffer: see "Printing fast" in [sdk/calypsi/README.md](sdk/calypsi/README.md).
+
 The Calypsi SDK's version is 2.1.2; its system calls are the same as in 2.1.1.
 
 ### Version 2.1.1: PS/2 Shift fix and a Calypsi SDK
