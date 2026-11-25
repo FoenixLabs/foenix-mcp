@@ -2,8 +2,9 @@
  * mcp/syscalls.h - calling the Foenix/MCP from a Calypsi program (MCP 2.1.0, A2560K)
  *
  * Part of the MCP's Calypsi SDK (sdk/calypsi in the foenix-mcp repository). Put its include
- * folder before Calypsi's own (-I <sdk>/include) and link its library (mcp_syscalls.a) or its
- * source (src/mcp_syscalls.c) with the program: it replaces the mcp/ headers and the system call
+ * folder before Calypsi's own (-I <sdk>/include) and link the library that matches the program's
+ * core and models (lib/mcp_syscalls-<core>-<code>-<data>.a, see README.md) or its source
+ * (src/mcp_syscalls.c) with the program: it replaces the mcp/ headers and the system call
  * functions in Calypsi's contrib/A2560K-SDK, which are older than MCP 2.1.0.
  *
  * The function numbers (KFN_...) are the MCP's own (src/include/syscalls.h); tools/check_sdk.py
