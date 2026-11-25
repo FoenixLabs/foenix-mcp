@@ -7,7 +7,7 @@
 
 #define VER_MAJOR 2
 #define VER_MINOR 1
-#define VER_BUILD 1
+#define VER_BUILD 2
 
 /* 2.0.30: shown after the version number when this MCP switches the CPU caches on (built with
    make ... CACHE=1). 2.1.0: "-cache" instead of "c", the same as the release file names; the boot

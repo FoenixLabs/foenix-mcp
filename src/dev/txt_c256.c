@@ -686,6 +686,7 @@ short txt_c256_install() {
     device.set_xy = txt_c256_set_xy;
     device.get_xy = txt_c256_get_xy;
     device.put = txt_c256_put;
+    device.put_run = 0;                 /* 2.1.2: no run function, put is used */
     device.scroll = txt_c256_scroll;
     device.fill = txt_c256_fill;
     device.get_sizes = txt_c256_get_sizes;

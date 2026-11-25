@@ -72,6 +72,7 @@ short txt_register(p_txt_device device) {
         txt_device_driver[i].set_xy = device->set_xy;
         txt_device_driver[i].get_xy = device->get_xy;
         txt_device_driver[i].put = device->put;
+        txt_device_driver[i].put_run = device->put_run;
         txt_device_driver[i].scroll = device->scroll;
         txt_device_driver[i].fill = device->fill;
         txt_device_driver[i].get_sizes = device->get_sizes;
@@ -406,6 +407,31 @@ void txt_get_xy(short screen, p_point position) {
  * @param screen the number of the text device
  * @param c the character to print
  */
+/*
+ * Print a run of plain characters at the cursor (2.1.2)
+ *
+ * Input:  screen = the text screen; s = the characters, without control characters; count = how many
+ * Output: none
+ *
+ * Console output used to reach the driver one character at a time, and each one set the cursor
+ * register. A driver with put_run writes the whole run and sets the cursor once; for one without
+ * it, this calls put for each character, as before.
+ */
+void txt_put_run(short screen, const char * s, short count) {
+    p_txt_device device = txt_get_device(screen);
+    short i;
+
+    if (device) {
+        if (device->put_run) {
+            device->put_run(s, count);
+        } else if (device->put) {
+            for (i = 0; i < count; i++) {
+                device->put(s[i]);
+            }
+        }
+    }
+}
+
 void txt_put(short screen, char c) {
     t_point cursor;
 

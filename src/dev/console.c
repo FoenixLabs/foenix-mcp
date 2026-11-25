@@ -18,6 +18,7 @@
 #include "constants.h"
 #include "dev/channel.h"
 #include "dev/console.h"
+#include "errors.h"
 #include "dev/ps2.h"
 #include "dev/kbd_mo.h"
 #include "dev/txt_screen.h"
@@ -497,42 +498,93 @@ short con_close(p_channel chan) {
 
 #if MODEL == MODEL_FOENIX_A2560K
 /*
- * Gen1 remote console (2026-11-04, as the A2560Me MCP's COM4 console): everything written to the console also goes
- * out on the SuperIO COM1 (16550 at $FEC0_23F8, 115200 8N1 = divisor 1, the UART clock is 1.8432 MHz), and bytes
- * received on COM1 are read like keys. Polled, no interrupts. A missing cable costs nothing (the UART sends anyway).
+ * Gen1 remote console (2026-11-04, as the A2560Me MCP's COM4 console): bytes received on COM1 are read like keys,
+ * and console output can be copied to a serial port (SuperIO 16550 UARTs, 115200 8N1 = divisor 1, the UART clock is
+ * 1.8432 MHz). Polled, no interrupts. A missing cable costs nothing (the UART sends anyway).
+ *
+ * 2.1.2: the copy of console output is off by default and is chosen with SET CONSOLE OFF|COM1|COM2. It used to go
+ * to COM1 always, and rc_putc waits for room in the UART for every character (about 87 us per byte at 115200 baud
+ * once its 16-byte FIFO is full): that made console output many times slower. Keys are read from COM1 either way.
  */
-#define RC_COM1(r)  (*(volatile unsigned char *)(0xFEC023F8 + (r)))
-#define RC_LSR_RX   0x01
-#define RC_LSR_THRE 0x20
+#define RC_COM1_BASE    0xFEC023F8
+#define RC_COM2_BASE    0xFEC022F8
+#define RC_REG(base, r) (*(volatile unsigned char *)((base) + (r)))
+#define RC_LSR_RX       0x01
+#define RC_LSR_THRE     0x20
 
-static short rc_ready = 0;
+static short rc_ready = 0;          /* bit 0: COM1 set up, bit 1: COM2 set up */
+static short rc_target = CON_COPY_OFF;  /* 2.1.2: where console output is copied to (SET CONSOLE) */
 
-static void rc_init() {
-    RC_COM1(3) = 0x83;              /* LCR: divisor latch */
-    RC_COM1(0) = 1;                 /* 115200 */
-    RC_COM1(1) = 0;
-    RC_COM1(3) = 0x03;              /* 8N1 */
-    RC_COM1(2) = 0x07;              /* FIFOs on and cleared */
-    RC_COM1(1) = 0x00;              /* no interrupts */
-    RC_COM1(4) = 0x03;              /* DTR, RTS */
-    rc_ready = 1;
+/*
+ * Set up one UART for the remote console, once
+ *
+ * Input:  port = 1 for COM1, 2 for COM2
+ * Output: none
+ */
+static void rc_init(short port) {
+    unsigned long base = (port == 2) ? RC_COM2_BASE : RC_COM1_BASE;
+    short bit = (port == 2) ? 2 : 1;
+
+    if (rc_ready & bit) return;
+    RC_REG(base, 3) = 0x83;         /* LCR: divisor latch */
+    RC_REG(base, 0) = 1;            /* 115200 */
+    RC_REG(base, 1) = 0;
+    RC_REG(base, 3) = 0x03;         /* 8N1 */
+    RC_REG(base, 2) = 0x07;         /* FIFOs on and cleared */
+    RC_REG(base, 1) = 0x00;         /* no interrupts */
+    RC_REG(base, 4) = 0x03;         /* DTR, RTS */
+    rc_ready |= bit;
 }
 
 char rc_getc() {
     char c;
-    if (!rc_ready) rc_init();
-    if (!(RC_COM1(5) & RC_LSR_RX)) return 0;
-    c = (char)RC_COM1(0);
+    rc_init(1);
+    if (!(RC_REG(RC_COM1_BASE, 5) & RC_LSR_RX)) return 0;
+    c = (char)RC_REG(RC_COM1_BASE, 0);
     if (c == 0x7F) c = CHAR_BS;     /* terminal DEL key = backspace */
     return c;
 }
 
+/*
+ * Choose where console output is copied to (2.1.2, SET CONSOLE OFF|COM1|COM2)
+ *
+ * Input:  target = CON_COPY_OFF, CON_COPY_COM1 or CON_COPY_COM2
+ * Output: 0, or ERR_BAD_ARGUMENT for another value
+ */
+short con_set_copy(short target) {
+    if ((target != CON_COPY_OFF) && (target != CON_COPY_COM1) && (target != CON_COPY_COM2)) {
+        return ERR_BAD_ARGUMENT;
+    }
+    if (target != CON_COPY_OFF) rc_init(target);
+    rc_target = target;
+    return 0;
+}
+
+/*
+ * Where is console output copied to? (2.1.2)
+ *
+ * Input:  none
+ * Output: CON_COPY_OFF, CON_COPY_COM1 or CON_COPY_COM2
+ */
+short con_get_copy() {
+    return rc_target;
+}
+
+/*
+ * Copy one character of console output to the chosen serial port
+ *
+ * Input:  c = the character (LF goes out as CR LF)
+ * Output: none. Does nothing with SET CONSOLE OFF.
+ */
 void rc_putc(char c) {
     long n = 20000;
-    if (!rc_ready) rc_init();
+    unsigned long base;
+
+    if (rc_target == CON_COPY_OFF) return;
+    base = (rc_target == CON_COPY_COM2) ? RC_COM2_BASE : RC_COM1_BASE;
     if (c == 0x0A) rc_putc(0x0D);   /* LF -> CR LF */
-    while (!(RC_COM1(5) & RC_LSR_THRE) && (--n > 0)) ;   /* 16-byte FIFO; a byte every 87 us */
-    if (n > 0) RC_COM1(0) = (unsigned char)c;
+    while (!(RC_REG(base, 5) & RC_LSR_THRE) && (--n > 0)) ;   /* 16-byte FIFO; a byte every 87 us */
+    if (n > 0) RC_REG(base, 0) = (unsigned char)c;
 }
 #endif
 
@@ -578,7 +630,7 @@ short con_write_b(p_channel chan, uint8_t b) {
     p_console_data con_data;
 
 #if MODEL == MODEL_FOENIX_A2560K
-    rc_putc((char)b);
+    if (rc_target != CON_COPY_OFF) rc_putc((char)b);   /* 2.1.2: only with SET CONSOLE COM1 / COM2 */
 #endif
 
     /* Check to see if we need to process ANSI codes */
@@ -716,16 +768,40 @@ short con_readline(p_channel chan, uint8_t * buffer, short size) {
 //  size = the number of bytes to write
 //
 short con_write(p_channel chan, const uint8_t * buffer, short size) {
-    int i;
+    p_console_data con_data = (p_console_data)&(chan->data);
+    int i, run;
 
     TRACE("con_write");
 
-    for (i = 0; i < size; i++) {
+    for (i = 0; i < size; ) {
         char c = (char)buffer[i];
         if (c == 0) {
             break;
+        }
+
+        /* 2.1.2: a run of plain characters (no control character, no ESC) outside an ANSI sequence
+         * goes to the screen driver in one go: it writes the cells and sets the cursor once. Before,
+         * every character went through the ANSI check and txt_put on its own, and each one wrote the
+         * cursor register. */
+        run = 0;
+        if (con_data->ansi_buffer_count == 0) {
+            while ((i + run < size) && (buffer[i + run] >= 0x20)) {
+                run++;
+            }
+        }
+
+        if (run > 1) {
+#if MODEL == MODEL_FOENIX_A2560K
+            if (rc_target != CON_COPY_OFF) {
+                int j;
+                for (j = 0; j < run; j++) rc_putc((char)buffer[i + j]);
+            }
+#endif
+            txt_put_run(chan->dev, (const char *)&buffer[i], (short)run);
+            i += run;
         } else {
             con_write_b(chan, c);
+            i++;
         }
     }
 

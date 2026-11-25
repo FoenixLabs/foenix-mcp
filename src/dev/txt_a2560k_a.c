@@ -543,6 +543,38 @@ void txt_a2560k_a_put(char c) {
 }
 
 /**
+ * Print a run of plain characters at the cursor (2.1.2)
+ *
+ * Input:  s = the characters (no control characters); count = how many
+ * Output: none
+ *
+ * The same as txt_a2560k_a_put for each character, but the cursor register is written once at the
+ * end instead of after every character. At the end of a line set_xy moves to the next line (and
+ * scrolls), exactly as put does.
+ */
+void txt_a2560k_a_put_run(const char * s, short count) {
+    int x = a2560k_a_cursor.x;
+    int y = a2560k_a_cursor.y;
+    unsigned int offset;
+    short i;
+
+    for (i = 0; i < count; i++) {
+        offset = (a2560k_a_region.origin.y + y) * a2560k_a_max_size.width + a2560k_a_region.origin.x + x;
+        VKY3_A_TEXT_MATRIX[offset] = s[i];
+        VKY3_A_COLOR_MATRIX[offset] = a2560k_a_color;
+        x++;
+        if (x >= a2560k_a_region.size.width) {
+            /* End of the line: set_xy goes to the next line and scrolls if needed */
+            txt_a2560k_a_set_xy(x, y);
+            x = a2560k_a_cursor.x;
+            y = a2560k_a_cursor.y;
+        }
+    }
+
+    txt_a2560k_a_set_xy(x, y);
+}
+
+/**
  * Initialize the screen
  */
 void txt_a2560k_a_init() {
@@ -681,6 +713,7 @@ short txt_a2560k_a_install() {
     device.set_xy = txt_a2560k_a_set_xy;
     device.get_xy = txt_a2560k_a_get_xy;
     device.put = txt_a2560k_a_put;
+    device.put_run = txt_a2560k_a_put_run;
     device.scroll = txt_a2560k_a_scroll;
     device.fill = txt_a2560k_a_fill;
     device.get_sizes = txt_a2560k_a_get_sizes;
