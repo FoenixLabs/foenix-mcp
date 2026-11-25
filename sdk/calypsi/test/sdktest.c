@@ -32,7 +32,7 @@ static void show_result(const char * name, short result) {
 /*
  * The test: each block calls one part of the SDK and prints what it got.
  *
- * Input:  argc, argv = the command line; argv[0] is the program's path, used for the stat test
+ * Input:  argc, argv = the command line; argv[0] is the program's name as typed, used for the stat test
  * Output: 0
  */
 int main(int argc, char * argv[]) {
@@ -42,6 +42,8 @@ int main(int argc, char * argv[]) {
     t_extent text_size, pixel_size;
     char cwd[MAX_PATH_LEN];
     char old_cwd[MAX_PATH_LEN];
+    char prog[MAX_PATH_LEN];
+    short result;
     const char * path = (argc > 0) ? argv[0] : "sdktest.pgz";
     FILE * f;
     char line[40];
@@ -66,12 +68,23 @@ int main(int argc, char * argv[]) {
     show_result("sys_fsys_getcwd", sys_fsys_getcwd(old_cwd, sizeof(old_cwd)));
     printf("  \"%s\" / \"%s\" %s\n\n", cwd, old_cwd, strcmp(cwd, old_cwd) == 0 ? "(same)" : "(DIFFERENT)");
 
-    /* sys_fsys_stat, new to the SDK */
-    show_result("sys_fsys_stat", sys_fsys_stat(path, &file));
-    printf("  %s: %ld bytes, %04d-%02d-%02d %02d:%02d, attributes %02X\n",
-           path, file.size,
-           1980 + (file.date >> 9), (file.date >> 5) & 0x0F, file.date & 0x1F,
-           file.time >> 11, (file.time >> 5) & 0x3F, file.attributes);
+    /* sys_fsys_stat, new to the SDK. argv[0] is the name as typed on the command line ("SDKTEST"):
+     * the MCP found the file by adding ".PGZ", so do the same when the name has no extension. */
+    strncpy(prog, path, sizeof(prog) - 5);
+    prog[sizeof(prog) - 5] = 0;
+    result = sys_fsys_stat(prog, &file);
+    if (result < 0 && strchr(prog, '.') == 0) {
+        strcat(prog, ".PGZ");
+        result = sys_fsys_stat(prog, &file);
+    }
+    show_result("sys_fsys_stat", result);
+    if (result >= 0) {
+        /* Only on success: after an error the record holds nothing */
+        printf("  %s: %ld bytes, %04d-%02d-%02d %02d:%02d, attributes %02X\n",
+               prog, file.size,
+               1980 + (file.date >> 9), (file.date >> 5) & 0x0F, file.date & 0x1F,
+               file.time >> 11, (file.time >> 5) & 0x3F, file.attributes);
+    }
     show_result("sys_fsys_stat (none)", sys_fsys_stat("no_such_file.xyz", &file));
     printf("\n");
 
