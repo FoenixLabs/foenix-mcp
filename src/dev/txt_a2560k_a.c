@@ -175,12 +175,8 @@ short txt_a2560k_a_set_resolution(short width, short height) {
     // If VICKY is generating a 40MHz signal, we need to switch the bit to go to 40MHz before
     // clearing it to go back to 25MHz.
     if (*VKY3_A_MCR & VKY3_A_CLK40) {
-        /* Through a local copy: the register is then written as a whole long (Calypsi would
-         * otherwise change one byte with bset.b / bclr.b, see tools/calypsi_check.py) */
-        unsigned long mcr = *VKY3_A_MCR;
-        *VKY3_A_MCR = mcr | VKY3_A_1024x768;
-        mcr = *VKY3_A_MCR;
-        *VKY3_A_MCR = mcr & ~(VKY3_A_1024x768);
+        *VKY3_A_MCR |= VKY3_A_1024x768;
+        *VKY3_A_MCR &= ~(VKY3_A_1024x768);
     }
 
     /* Turn off resolution bits */
@@ -381,8 +377,6 @@ short txt_a2560k_a_set_color(unsigned char foreground, unsigned char background)
  * @param vertical the number of rows to scroll (negative is down, positive is up)
  */
 void txt_a2560k_a_scroll(short horizontal, short vertical) {
-    /* int, not short: Calypsi 5.18 multiplies a short y in place in "y * width" and the loop then
-     * goes on with y * width (tools/calypsi_check.py) */
     int x0, x1, x2, x3, dx;
     int y, y0, y1, y2, y3, dy;
     int width, distance, count;
@@ -529,7 +523,7 @@ void txt_a2560k_a_get_xy(p_point position) {
  * @param c the character to print
  */
 void txt_a2560k_a_put(char c) {
-    int x;          /* int: see txt_a2560k_a_scroll */
+    int x;
     int y;
     unsigned int offset;
 
@@ -554,12 +548,8 @@ void txt_a2560k_a_init() {
     // If VICKY is generating a 40MHz signal, we need to switch the bit to go to 40MHz before
     // clearing it to go back to 25MHz.
     if (*VKY3_A_MCR & VKY3_A_CLK40) {
-        /* Through a local copy: the register is then written as a whole long (Calypsi would
-         * otherwise change one byte with bset.b / bclr.b, see tools/calypsi_check.py) */
-        unsigned long mcr = *VKY3_A_MCR;
-        *VKY3_A_MCR = mcr | VKY3_A_1024x768;
-        mcr = *VKY3_A_MCR;
-        *VKY3_A_MCR = mcr & ~(VKY3_A_1024x768);
+        *VKY3_A_MCR |= VKY3_A_1024x768;
+        *VKY3_A_MCR &= ~(VKY3_A_1024x768);
     }
 
     a2560k_a_resolution.width = 0;
