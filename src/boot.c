@@ -448,7 +448,7 @@ void boot_from_bdev(short device) {
     char initial_path[10];
 #if MODEL == MODEL_FOENIX_A2560K
     unsigned int boot_dip = 0;        // The setting on the user and boot mode DIP switches
-#elif MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X || MODEL_FOENIX_A2560U_PLUS
+#elif MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X || MODEL == MODEL_FOENIX_A2560U_PLUS     /* 2.2.0: the last test was always true */
     unsigned short boot_dip = 0;        // The setting on the user and boot mode DIP switches
 #endif 
     short bootable = 0;                 // Is the boot sector of the selected device bootable?

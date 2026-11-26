@@ -27,7 +27,9 @@ const unsigned long a2560k_a_lut[VKY3_A_LUT_SIZE] = {
 	0xFFAA5500, // Mid-Tone Orange
 	0xFF008080, // Mid-Tone Cian
 	0xFF808080, // 50% Grey
-#if MODEL_FOENIX_A2560X
+/* 2.2.0: "#if MODEL_FOENIX_A2560X" was always true (it does not compare MODEL), so every machine had the
+ * A2560X's near-black colour 8 ("bright black", ESC[90m). Now only the A2560X has it. */
+#if MODEL == MODEL_FOENIX_A2560X
     0xFF202020, // Dark Grey
 #else
 	0xFF555555, // Dark Grey
@@ -645,8 +647,10 @@ void txt_a2560k_a_init() {
     /* Set the cursor */
     txt_a2560k_a_set_cursor(1, 0, 0xB1);
 
-    /* Set the border */
-#if MODEL_FOENIX_A2560X
+    /* Set the border.
+     * 2.2.0: "#if MODEL_FOENIX_A2560X" was always true, so the A2560K got the A2560X's 8 px purple border.
+     * That is kept for the A2560K (the screen sizes programs know stay the same), now as a real test. */
+#if MODEL == MODEL_FOENIX_A2560X || MODEL == MODEL_FOENIX_A2560K
     txt_a2560k_a_set_border(8, 8);                            /* Set up the border */
     txt_a2560k_a_set_border_color(0x10, 0x00, 0x10);
 #else
