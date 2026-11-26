@@ -26,17 +26,20 @@
 
 #if MODEL == MODEL_FOENIX_A2560K
 #include "dev/kbd_mo.h"
+#include "dev/console.h"
 #endif
 
 #define MAX_SETTING_NAME    64
-#define MAX_SETTING_HELP    80
+#define MAX_SETTING_HELP    128     /* 2.1.2: longest help line; was 80, the CLOCK line is longer */
 
 /*
  * Structure to hold a setting
  */
 typedef struct s_setting {
     char name[MAX_SETTING_NAME];        /* Name of the setting (in upper case) */
-    char help[MAX_SETTING_HELP];        /* Help line for this setting */
+    char help[MAX_SETTING_HELP + 1];    /* Help line for this setting (2.1.2: + 1 for the terminating 0, which
+                                         * was written past the end and then overwritten by setter, so SET
+                                         * HELP printed garbage after a line of 80 characters or more) */
     cli_setter setter;                  /* The function to set the value of the setting */
     cli_getter getter;                  /* The function to get the value of the setting */
     struct s_setting * next;            /* Pointer to the next registered setting */
@@ -769,6 +772,45 @@ short cli_keycolor_get(short channel, char * value, short size)  {
     return 0;
 }
 
+/*
+ * SET CONSOLE OFF|COM1|COM2: copy console output to a serial port (2.1.2)
+ *
+ * Input:  channel = the console, for the usage text; value = OFF, COM1 or COM2 (any case)
+ * Output: 0, or ERR_GENERAL for another value
+ *
+ * For a terminal on a serial port (115200 8N1) as a remote console. OFF by default: copying waits
+ * for the UART for every character and made console output many times slower. Keys typed on COM1
+ * are read either way.
+ */
+short cli_console_set(short channel, const char * value) {
+    const char * usage = "USAGE: SET CONSOLE OFF|COM1|COM2\n";
+    short target;
+
+    if (strcicmp(value, "OFF") == 0) {
+        target = CON_COPY_OFF;
+    } else if (strcicmp(value, "COM1") == 0) {
+        target = CON_COPY_COM1;
+    } else if (strcicmp(value, "COM2") == 0) {
+        target = CON_COPY_COM2;
+    } else {
+        sys_chan_write(channel, usage, strlen(usage));
+        return ERR_GENERAL;
+    }
+    return con_set_copy(target);
+}
+
+/*
+ * GET CONSOLE: where console output is copied to (2.1.2)
+ *
+ * Input:  channel = not used; value = where to put "OFF", "COM1" or "COM2"; size = its size
+ * Output: 0
+ */
+short cli_console_get(short channel, char * value, short size) {
+    short target = con_get_copy();
+    strncpy(value, (target == CON_COPY_COM1) ? "COM1" : ((target == CON_COPY_COM2) ? "COM2" : "OFF"), size);
+    return 0;
+}
+
 #endif
 
 #if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_A2560X || MODEL == MODEL_FOENIX_GENX
@@ -1072,6 +1114,9 @@ void cli_set_init() {
     sys_get_info(&info);
 
     cli_set_register("CLOCK", "CLOCK ON|OFF|12|24 -- the same as the CLOCK command (kept for old mcp.init files)", cli_clock_set, 0);
+#if MODEL == MODEL_FOENIX_A2560K
+    cli_set_register("CONSOLE", "CONSOLE OFF|COM1|COM2 -- copy console output to a serial port (OFF by default)", cli_console_set, cli_console_get);
+#endif
 #if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_A2560X || MODEL == MODEL_FOENIX_GENX
     cli_set_register("BG", "BG <name>|RGBrrrgggbbb -- background colour (see SET HELP)", cli_bg_set, cli_bg_get);
 #endif

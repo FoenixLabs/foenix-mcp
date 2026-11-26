@@ -104,6 +104,30 @@ fixes the last compiler faults that 2.1.x worked around. The workarounds and
 Released together with lvboot 1.5, which has the same SD and IDE fixes (see
 [lvboot/README.md](lvboot/README.md)).
 
+### Version 2.1.2: faster console output
+
+**Console output is much faster.** Every character written to the console was
+also sent to the serial port COM1 (a copy for a remote terminal), and the MCP
+waited for the UART for each one: about 87 µs per character at 115200 baud.
+The copy is now off by default. `SET CONSOLE COM1` or `SET CONSOLE COM2` copies
+console output to that port again, for example in `mcp.init` when a terminal
+is connected; `SET CONSOLE OFF` stops it, and `GET CONSOLE` shows the setting.
+Keys typed on COM1 are read either way.
+
+**Runs of characters in one go.** A run of plain characters (no control
+characters, no ANSI sequence) now goes to the screen driver at once: it writes
+the characters and sets the cursor once, instead of once per character.
+
+On an A2560K25 at 1024 x 768, a full page of text (60 rows x 157 characters,
+each row written with one `sys_chan_write`) now takes about 105 ms instead of
+870 ms. Programs that print with `printf` gain most with a larger `stdout`
+buffer: see "Printing fast" in [sdk/calypsi/README.md](sdk/calypsi/README.md).
+
+**SET HELP.** The CLOCK line ended in a few strange characters: a help line of
+80 characters or more lost its end marker (since 2.1.0). Fixed.
+
+The Calypsi SDK's version is 2.1.2; its system calls are the same as in 2.1.1.
+
 ### Version 2.1.1: PS/2 Shift fix and a Calypsi SDK
 
 A small release on top of 2.1.0.

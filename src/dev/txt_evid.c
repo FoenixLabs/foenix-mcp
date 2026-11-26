@@ -696,6 +696,7 @@ short txt_evid_install() {
 		device.set_xy = txt_evid_set_xy;
 		device.get_xy = txt_evid_get_xy;
 		device.put = txt_evid_put;
+		device.put_run = 0;                 /* 2.1.2: no run function, put is used */
 		device.scroll = txt_evid_scroll;
 		device.fill = txt_evid_fill;
 		device.get_sizes = txt_evid_get_sizes;

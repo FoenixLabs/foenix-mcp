@@ -699,6 +699,7 @@ short txt_a2560u_install() {
     device.set_xy = txt_a2560u_set_xy;
     device.get_xy = txt_a2560u_get_xy;
     device.put = txt_a2560u_put;
+    device.put_run = 0;                 /* 2.1.2: no run function, put is used */
     device.scroll = txt_a2560u_scroll;
     device.fill = txt_a2560u_fill;
     device.get_sizes = txt_a2560u_get_sizes;

@@ -48,6 +48,7 @@ typedef short (*p_get_color)(unsigned char * foreground, unsigned char * backgro
 typedef void (*p_set_xy)(short x, short y);
 typedef void (*p_get_xy)(p_point position);
 typedef void (*p_put)(char c);
+typedef void (*p_put_run)(const char * s, short count);
 typedef void (*p_scroll)(short horizontal, short vertical);
 typedef void (*p_fill)(char c);
 typedef void (*p_get_sizes)(p_extent text_size, p_extent pixel_size);
@@ -81,6 +82,7 @@ typedef struct s_txt_device {
     p_set_xy set_xy;                        /**< Pointer to the device's set_xy function */
     p_get_xy get_xy;                        /**< Pointer to the device's get_xy function */
     p_put put;                              /**< Pointer to the device's put function */
+    p_put_run put_run;                      /**< 2.1.2: prints a run of plain characters at once (0 = none, put is used) */
     p_scroll scroll;                        /**< Pointer to the device's scroll function */
     p_fill fill;                            /**< Pointer to the device's fill function */
     p_get_sizes get_sizes;                  /**< Pointer to the device's get_sizes function */
@@ -267,6 +269,16 @@ extern void txt_get_xy(short screen, p_point position);
  * @param c the character to print
  */
 extern void txt_put(short screen, char c);
+
+/**
+ * Print a run of plain characters at the cursor (2.1.2)
+ *
+ * Input:  screen = the text screen; s = the characters (none of them a control character: BS, TAB,
+ *         LF, CR, ESC ...); count = how many
+ * Output: none. The result is the same as txt_put for each character, but the driver writes the run
+ *         in one go and sets the cursor once.
+ */
+extern void txt_put_run(short screen, const char * s, short count);
 
 /*
  * Send a character to the screen without any escape code interpretation
