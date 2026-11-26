@@ -38,8 +38,8 @@ short cmd_diskread(short screen, int argc, const char * argv[]) {
     bdev_number = (short)cli_eval_number(argv[1]);
     lba = cli_eval_number(argv[2]);
 
-    sprintf(buffer, "Reading drive #%d, sector %p\n", bdev_number, (void*)lba);
-    print(screen, buffer);
+    sprintf((char *)buffer, "Reading drive #%d, sector %p\n", bdev_number, (void*)lba);
+    print(screen, (char *)buffer);
 
     result = bdev_read(bdev_number, lba, buffer, 512);
     if (result < 512) {
@@ -74,8 +74,8 @@ short cmd_diskfill(short screen, int argc, const char * argv[]) {
     lba = cli_eval_number(argv[2]);
     value = (unsigned char)cli_eval_number(argv[3]);
 
-    sprintf(buffer, "Filling drive #%d, sector %p with 0x%02X\n", bdev_number, (void*)lba, (short)value);
-    print(screen, buffer);
+    sprintf((char *)buffer, "Filling drive #%d, sector %p with 0x%02X\n", bdev_number, (void*)lba, (short)value);
+    print(screen, (char *)buffer);
 
     for (i = 0; i < 512; i++) {
         buffer[i] = value;
@@ -101,7 +101,7 @@ short cmd_run(short screen, int argc, const char * argv[]) {
     TRACE("cmd_run");
 
     sys_chan_ioctrl(screen, CON_IOCTRL_ECHO_ON, 0, 0);
-    short result = proc_run(argv[0], argc, argv);
+    short result = proc_run(argv[0], argc, (char **)argv);
     if (result < 0) {
         sys_chan_ioctrl(screen, CON_IOCTRL_ECHO_OFF, 0, 0);     /* 2.0.33: the command line types its own echo */
         err_print(screen, "Unable to execute file", result);
@@ -146,7 +146,7 @@ short cmd_mkdir(short screen, int argc, const char * argv[]) {
  *
  * Inputs:
  * screen = the channel to report on
- * path = the path with the pattern, e.g. "/sd/tmp/*.bak" or "*.o"
+ * path = the path with the pattern, e.g. "*.o", or the folder /sd/tmp with the pattern *.bak
  *
  * Returns:
  * 0 on success, a negative number on error
@@ -429,7 +429,7 @@ short cmd_dir(short screen, int argc, const char * argv[]) {
         result = fsys_getlabel(path, label);
         if ((result == 0) && (strlen(label) > 0)) {
             sprintf(buffer, "Drive: %s\n", label);
-            chan_write(screen, buffer, strlen(buffer));
+            print(screen, buffer);
         }
 
         while (1) {

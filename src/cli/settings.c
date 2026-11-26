@@ -323,11 +323,11 @@ void cli_set_help(short channel) {
     p_setting setting;
 
     sprintf(message, "SET/GET command supported settings:\n");
-    sys_chan_write(channel, message, strlen(message));
+    print(channel, message);
 
     for (setting = cli_first_setting; setting != 0; setting = setting->next) {
-        sys_chan_write(channel, setting->help, strlen(setting->help));
-        sys_chan_write(channel, "\n", 1);
+        print(channel, setting->help);
+        print(channel, "\n");
     }
     print(channel, "F1-F8|+F1-+F8 <command> -- run <command> with a function key (+ = Shift; GET FX lists them)\n");
     print(channel, "NET DHCP ON|OFF, NET IP|MASK|GATEWAY a.b.c.d, NET MAC xx:..:xx -- network settings (GET NET lists them)\n");
@@ -356,7 +356,7 @@ short cli_cmd_set(short channel, int argc, const char * argv[]) {
         result = cli_set_value(channel, argv[1], argv[2]);
         if (result != 0) {
             sprintf(message, "Unable to change setting: %s\n", sys_err_message(result));
-            sys_chan_write(channel, message, strlen(message));
+            print(channel, message);
             return 0;
         }
         return result;
@@ -408,7 +408,7 @@ short cli_cmd_get(short channel, int argc, const char * argv[]) {
 
             } else {
                 sprintf(buffer, "Unable to get setting: %s\n", sys_err_message(result));
-                sys_chan_write(channel, buffer, strlen(buffer));
+                print(channel, buffer);
                 return result;
             }
         }
@@ -436,7 +436,7 @@ short cli_sof_set(short channel, const char * value) {
         sprintf(message, "USAGE: SET SOF 0|1\n");
     }
 
-    sys_chan_write(channel, message, strlen(message));
+    print(channel, message);
     return 0;
 }
 
@@ -465,7 +465,7 @@ short cli_rtc_set(short channel, const char * value) {
         sprintf(message, "USAGE: SET RTC 0|1\n");
     }
 
-    sys_chan_write(channel, message, strlen(message));
+    print(channel, message);
     return 0;
 }
 
@@ -514,7 +514,7 @@ short cli_clock_set(short channel, const char * value) {
         rtc_clock_set_24h(0);
         rtc_clock_set(1);
     } else {
-        sys_chan_write(channel, usage, strlen(usage));
+        print(channel, usage);
         return ERR_GENERAL;
     }
     return 0;
@@ -537,12 +537,12 @@ short cli_date_set(short channel, const char * date) {
     for (i = 0; i < 10; i++) {
         if ((i == 4) || (i == 7)) {
             if (date[i] != '-') {
-                sys_chan_write(channel, usage, strlen(usage));
+                print(channel, usage);
                 return ERR_GENERAL;
             }
         } else {
             if ((date[i] < '0') || (date[i] > '9')) {
-                sys_chan_write(channel, usage, strlen(usage));
+                print(channel, usage);
                 return ERR_GENERAL;
             }
         }
@@ -586,12 +586,12 @@ short cli_time_set(short channel, const char * time) {
     for (i = 0; i < 8; i++) {
         if ((i == 2) || (i == 5)) {
             if (time[i] != ':') {
-                sys_chan_write(channel, usage, strlen(usage));
+                print(channel, usage);
                 return ERR_GENERAL;
             }
         } else {
             if ((time[i] < '0') || (time[i] > '9')) {
-                sys_chan_write(channel, usage, strlen(usage));
+                print(channel, usage);
                 return ERR_GENERAL;
             }
         }
@@ -620,7 +620,7 @@ short cli_time_get(short channel, char * value, short size) {
 
 short cli_set_font(short screen, const char * path) {
     const unsigned long load_address = 0x10000;
-    unsigned long jump_address = 0;
+    long jump_address = 0;
     char message[160];
     t_file_info filinfo;
 
@@ -735,7 +735,7 @@ short cli_layout_set(short channel, const char * value) {
     fd = sys_fsys_open(value, 1);
     if (fd >= 0) {
         /* Try to read the data */
-        result = sys_chan_read(fd, buffer, 1024);
+        result = sys_chan_read(fd, (unsigned char *)buffer, 1024);
 
         if (result > 0) {
             /* If we got something, set the layout */
@@ -793,7 +793,7 @@ short cli_console_set(short channel, const char * value) {
     } else if (strcicmp(value, "COM2") == 0) {
         target = CON_COPY_COM2;
     } else {
-        sys_chan_write(channel, usage, strlen(usage));
+        print(channel, usage);
         return ERR_GENERAL;
     }
     return con_set_copy(target);

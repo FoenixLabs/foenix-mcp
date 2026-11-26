@@ -93,7 +93,9 @@ short cli_test_dac(short ch, int argc, const char * argv[])
         return nerr ? -1 : 0;
     }
     /* tone / scales: mode 2 returns at once (the hardware tone runs), mode 3 plays until the deadline */
-    while (timers_jiffies() < g1t_end) ;
+    while (timers_jiffies() < g1t_end) {
+        /* wait: the sound plays until the deadline */
+    }
     {   /* everything off */
         volatile u32 *P = (volatile u32 *)0xFEC22000UL;
         short v;
