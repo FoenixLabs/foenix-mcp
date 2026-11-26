@@ -598,7 +598,7 @@ short cmd_getjiffies(short channel, int argc, const char * argv[]) {
     char buffer[160];
 
     sprintf(buffer, "%ld\n", timers_jiffies());
-    sys_chan_write(channel, buffer, strlen(buffer));;
+    print(channel, buffer);;
     return 0;
 }
 
@@ -609,7 +609,7 @@ short cmd_get_ticks(short channel, int argc, const char * argv[]) {
     char buffer[160];
 
     sprintf(buffer, "%ld\n", rtc_get_jiffies());
-    sys_chan_write(channel, buffer, strlen(buffer));
+    print(channel, buffer);
     return 0;
 }
 
@@ -619,7 +619,7 @@ short cmd_get_ticks(short channel, int argc, const char * argv[]) {
 short cmd_cls(short channel, int argc, const char * argv[]) {
     const char * ansi_cls = "\x1B[2J\x1B[H";
 
-    sys_chan_write(channel, ansi_cls, strlen(ansi_cls));
+    print(channel, ansi_cls);
     return 0;
 }
 
@@ -636,13 +636,13 @@ short cmd_sysinfo(short channel, int argc, const char * argv[]) {
     sprintf(buffer, "CPU: %s\n", cli_sys_info.cpu_name);
     print(channel, buffer);
 
-    sprintf(buffer, "Clock (kHz): %lu\n", cli_sys_info.cpu_clock_khz);
+    sprintf(buffer, "Clock (kHz): %lu\n", (unsigned long)cli_sys_info.cpu_clock_khz);
     print(channel, buffer);
 
-    sprintf(buffer, "Bus clock (kHz): %lu\n", cli_sys_info.bus_clock_khz);
+    sprintf(buffer, "Bus clock (kHz): %lu\n", (unsigned long)cli_sys_info.bus_clock_khz);
     print(channel, buffer);
 
-    sprintf(buffer, "System Memory: 0x%lX\n", cli_sys_info.system_ram_size);
+    sprintf(buffer, "System Memory: 0x%lX\n", (unsigned long)cli_sys_info.system_ram_size);
     print(channel, buffer);
 
     /* 2.1.0: the top of memory for programs, and the network pool just above it */
@@ -669,7 +669,7 @@ short cmd_sysinfo(short channel, int argc, const char * argv[]) {
         print(channel, buffer);
     }
 
-    sprintf(buffer, "FPGA Model: %08lX\n", cli_sys_info.fpga_model);
+    sprintf(buffer, "FPGA Model: %08lX\n", (unsigned long)cli_sys_info.fpga_model);
     print(channel, buffer);
 
     sprintf(buffer, "FPGA Version: %04X.%04X\n", cli_sys_info.fpga_version, cli_sys_info.fpga_subver);
@@ -1563,7 +1563,7 @@ short cli_process_line(short channel, char * command_line) {
         }
 
         // Try to execute the command
-        return cli_exec(channel, argv[0], argc, argv);
+        return cli_exec(channel, argv[0], argc, (const char **)argv);
     }
     return 0;       // 2.1.0: an empty line did not return anything
 }
@@ -1684,7 +1684,7 @@ short cli_repl(short channel) {
             }
         }
 
-        sys_chan_write(g_current_channel, "\x10 ", 2);                           // Print our prompt
+        print(g_current_channel, "\x10 ");                           // Print our prompt
         result = cli_readline(g_current_channel, command_line);
         switch (result) {
             case -1:
@@ -1898,7 +1898,7 @@ short cli_exec_batch(short channel, const char * path) {
         short result = 0;
 
         do {
-            result = sys_chan_readline(fd, command_line, MAX_COMMAND_SIZE);
+            result = sys_chan_readline(fd, (unsigned char *)command_line, MAX_COMMAND_SIZE);
             if (result > 0) {
                 /* 2.0.33: drop the line ending. The file system hands the line over with its "\n"
                  * (and "\r" for a file made on Windows), and the commands took that as part of the

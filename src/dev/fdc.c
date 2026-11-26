@@ -11,6 +11,7 @@
 #include "indicators.h"
 #include "dev/block.h"
 #include "dev/fdc.h"
+#include "simpleio.h"
 #include "log.h"
 #include "types.h"
 #include "timers.h"
@@ -664,11 +665,11 @@ void fdc_log_transaction(p_fdc_trans trans) {
     short i;
 
     sprintf(buffer, "Command: %02X\n", trans->command);
-    sys_chan_write(0, buffer, strlen(buffer));
+    print(0, buffer);
 
     for (i = 0; i < trans->parameter_count; i++) {
         sprintf(buffer, "Parameter %d: %02X\n", i, trans->parameters[i]);
-        sys_chan_write(0, buffer, strlen(buffer));
+        print(0, buffer);
     }
 }
 
@@ -883,7 +884,7 @@ short fdc_seek(unsigned char cylinder) {
 
     while (trans.retries > 0) {
         result = fdc_command(&trans);                       /* Issue the transaction */
-        if ((result == 0)) {
+        if (result == 0) {
             break;
         } else {
             log_num(LOG_ERROR, "fdc_seek: retry ", result);
@@ -904,7 +905,7 @@ short fdc_seek(unsigned char cylinder) {
         return DEV_TIMEOUT;
     }
 
-    if ((pcn == cylinder)) {
+    if (pcn == cylinder) {
         return 0;
     } else {
         return ERR_GENERAL;
@@ -937,7 +938,7 @@ short fdc_recalibrate() {
 
     while (trans.retries > 0) {
         result = fdc_command(&trans);                       /* Issue the transaction */
-        if ((result == 0)) {
+        if (result == 0) {
             break;
         } else {
             log_num(LOG_INFO, "fdc_recalibrate: retry ", result);
@@ -992,7 +993,7 @@ short fdc_sense_status() {
 
     while (trans.retries > 0) {
         result = fdc_command(&trans);                       /* Issue the transaction */
-        if ((result == 0)) {
+        if (result == 0) {
             break;
         } else {
             log_num(LOG_INFO, "fdc_sense_status: retry ", result);
@@ -1074,7 +1075,7 @@ short fdc_read(long lba, unsigned char * buffer, short size) {
             log_num(LOG_INFO, "fdc_cmd: ", result);
         }
 
-        if ((result == 0)) { //} && ((trans.results[0] & 0xC0) == 0)) {
+        if (result == 0) { //} && ((trans.results[0] & 0xC0) == 0)) {
             sprintf(message, "fdc_read: success? ST0=%02X ST1=%02X ST2=%02X C=%02X H=%02X R=%02X N=%02X",
                 trans.results[0], trans.results[1], trans.results[2], trans.results[3], trans.results[4], trans.results[5], trans.results[6]);
             logmsg(LOG_INFO, message);
@@ -1130,7 +1131,7 @@ short fdc_write(long lba, const unsigned char * buffer, short size) {
     trans.parameters[7] = 0xFF;                             /* DTL = 0xFF */
     trans.parameter_count = 8;                              /* Sending 8 parameter bytes */
 
-    trans.data = buffer;                                    /* Transfer sector data to buffer */
+    trans.data = (unsigned char *)buffer;                   /* Sector data to write (the FDC code only reads it) */
     trans.data_count = size;
 
     trans.result_count = 7;                                 /* Expect 7 result bytes */
@@ -1150,7 +1151,7 @@ short fdc_write(long lba, const unsigned char * buffer, short size) {
             return DEV_WRITEPROT;
         }
 
-        if ((result == 0)) { //} && ((trans.results[0] & 0xC0) == 0)) {
+        if (result == 0) { //} && ((trans.results[0] & 0xC0) == 0)) {
             sprintf(message, "fdc_write: success? ST0=%02X ST1=%02X ST2=%02X C=%02X H=%02X R=%02X N=%02X",
                 trans.results[0], trans.results[1], trans.results[2], trans.results[3], trans.results[4], trans.results[5], trans.results[6]);
             logmsg(LOG_INFO, message);

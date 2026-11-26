@@ -105,7 +105,7 @@ ASMCALL unsigned long syscall_dispatch(int32_t function, int32_t param0, int32_t
                     return chan_ioctrl((short)param0, (short)param1, (unsigned char *)param2, (short)param3);
 
                 case KFN_CHAN_OPEN:
-                    return chan_open((short)param0, (const char *)param1, (short)param2);
+                    return chan_open((short)param0, (const uint8_t *)param1, (short)param2);
 
                 case KFN_CHAN_CLOSE:
                     return chan_close((short)param0);

@@ -347,7 +347,7 @@ short boot_screen(void) {
         txt_set_xy(screen, (160 - strlen(buffer)) / 2, 62);
     else 
         txt_set_xy(screen, (160 - strlen(buffer)) / 2, 58);
-    sys_chan_write(screen, buffer, strlen(buffer));
+    print(screen, buffer);
 
     // Get the information about the system
     sys_get_info(&info);
@@ -366,7 +366,7 @@ short boot_screen(void) {
     str_upcase(info.cpu_name, entry);
     sprintf(buffer, "         CPU: %s\n", entry);
     print(screen, buffer);
-    sprintf(buffer, " CLOCK (KHZ): %lu\n", info.cpu_clock_khz);
+    sprintf(buffer, " CLOCK (KHZ): %lu\n", (unsigned long)info.cpu_clock_khz);
     print(screen, buffer);
     sprintf(buffer, "      FPGA V: %x.%02x.%04x\n", (unsigned int)info.fpga_model, info.fpga_version, info.fpga_subver);
     print(screen, buffer);

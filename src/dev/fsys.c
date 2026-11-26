@@ -683,7 +683,7 @@ FIL * fchan_to_file(t_channel * chan) {
 short fchan_read(t_channel * chan, unsigned char * buffer, short size) {
     FIL * file;
     FRESULT result;
-    int total_read;
+    UINT total_read;
 
     logmsg(LOG_TRACE, "fchan_read");
 
@@ -706,13 +706,13 @@ short fchan_read(t_channel * chan, unsigned char * buffer, short size) {
 short fchan_readline(t_channel * chan, unsigned char * buffer, short size) {
     FIL * file;
     char * result;
-    int total_read;
+    UINT total_read;
 
     file = fchan_to_file(chan);
     if (file) {
-        result = f_gets(buffer, size, file);
+        result = f_gets((TCHAR *)buffer, size, file);
         if (result) {
-            return strlen(buffer);
+            return strlen((const char *)buffer);
         } else {
             return fatfs_to_foenix(f_error(file));
         }
@@ -727,14 +727,14 @@ short fchan_readline(t_channel * chan, unsigned char * buffer, short size) {
 short fchan_read_b(t_channel * chan) {
     FRESULT result;
     FIL * file;
-    short total_read;
+    UINT total_read;                    /* 2.2.0: UINT, as f_read writes it (was a short behind a (UINT *) cast: f_read wrote 4 bytes into 2) */
     char buffer[2];
 
     logmsg(LOG_TRACE, "fchan_read_b");
 
     file = fchan_to_file(chan);
     if (file) {
-        result = f_read(file, buffer, 1, (UINT*)&total_read);
+        result = f_read(file, buffer, 1, &total_read);
         if (result == FR_OK) {
             return (short)(buffer[0] & 0x00ff);
         } else {
@@ -753,7 +753,7 @@ short fchan_read_b(t_channel * chan) {
 short fchan_write(p_channel chan, const unsigned char * buffer, short size) {
     FIL * file;
     FRESULT result;
-    int total_written;
+    UINT total_written;
 
     file = fchan_to_file(chan);
     if (file) {
@@ -775,7 +775,7 @@ short fchan_write(p_channel chan, const unsigned char * buffer, short size) {
 short fchan_write_b(t_channel * chan, const unsigned char b) {
     FIL * file;
     FRESULT result;
-    int total_written;
+    UINT total_written;
     unsigned char buffer[1];
 
     file = fchan_to_file(chan);
@@ -798,7 +798,7 @@ short fchan_write_b(t_channel * chan, const unsigned char b) {
 short fchan_status(t_channel * chan) {
     FIL * file;
     FRESULT result;
-    int total_written;
+    UINT total_written;
 
     file = fchan_to_file(chan);
     if (file) {
@@ -824,7 +824,7 @@ short fchan_status(t_channel * chan) {
 short fchan_flush(t_channel * chan) {
     FIL * file;
     FRESULT result;
-    int total_written;
+    UINT total_written;
 
     file = fchan_to_file(chan);
     if (file) {
@@ -841,7 +841,6 @@ short fchan_flush(t_channel * chan) {
 short fchan_seek(t_channel * chan, long position, short base) {
     FIL * file;
     FRESULT result;
-    FSIZE_t new_position;
 
     file = fchan_to_file(chan);
     if (file) {
@@ -862,7 +861,8 @@ short fchan_seek(t_channel * chan, long position, short base) {
             return fatfs_to_foenix(result);
         }
 
-        return fatfs_to_foenix(f_lseek(file, new_position));
+        /* 2.2.0: an unknown base is refused; this seeked to an uninitialised position before */
+        return ERR_BAD_ARGUMENT;
     }
 
     return ERR_BADCHANNEL;

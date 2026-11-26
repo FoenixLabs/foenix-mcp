@@ -134,13 +134,13 @@ static void sprintmode(unsigned int mode, unsigned int reg, unsigned int size, c
 			int32_t displacement = (int32_t) getword();
 			if (displacement >= 32768) displacement -= 65536;
 			if (mode == 5) {
-				sprintf(out_s, "%+li(A%u)", displacement, reg);
+				sprintf(out_s, "%+li(A%u)", (long)displacement, reg);
 			} else {
 				const uint32_t ldata = address - 2 + displacement;
 				if (!rawmode) {
-					sprintf(out_s, "%+li(PC) {$%08lu}", displacement, ldata);
+					sprintf(out_s, "%+li(PC) {$%08lX}", (long)displacement, (unsigned long)ldata);    /* 2.2.0: hex, as the $ says (was decimal) */
 				} else {
-					sprintf(out_s, "%+li(PC)", displacement);
+					sprintf(out_s, "%+li(PC)", (long)displacement);
 				}
 			}
 		} break;

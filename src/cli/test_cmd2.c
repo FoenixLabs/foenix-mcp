@@ -192,13 +192,13 @@ short cli_test_ps2(short channel, int argc, const char * argv[]) {
     const char help[] = "Press keys on a PS/2 keyboard... CTRL-C to quit.\n";
     unsigned short scancode = 0;
 
-    sys_chan_write(channel, help, strlen(help));
+    print(channel, help);
 
     do {
         if (scancode != 0) {
             char message[160];
             sprintf(message, "Scan code: %04x\n", scancode);
-            sys_chan_write(channel, message, strlen(message));
+            print(channel, message);
         }
     } while (
 #if MODEL == MODEL_FOENIX_A2560K
@@ -273,7 +273,7 @@ short cli_test_joystick(short channel, int argc, const char * argv[]) {
     unsigned short scancode = 0;
 
     sprintf(message, "Plug a joystick into either port 0 or port 1... ESC to quit.\n");
-    sys_chan_write(channel, message, strlen(message));
+    print(channel, message);
 
     /* Make sure we're in Atari joystick mode */
     *game_ctrl_port = 0;
@@ -283,7 +283,7 @@ short cli_test_joystick(short channel, int argc, const char * argv[]) {
         if (joy_state != old_joy_state) {
             old_joy_state = joy_state;
             sprintf(message, "Joystick: %08X\n", joy_state);
-            sys_chan_write(channel, message, strlen(message));
+            print(channel, message);
         }
 
         scancode = sys_kbd_scancode();
@@ -319,7 +319,7 @@ short cli_test_gamepad(short channel, int argc, const char * argv[]) {
     }
 
     sprintf(message, "Testing SNES gamepad port %d... ESC to quit.\n", (short)port);
-    sys_chan_write(channel, message, strlen(message));
+    print(channel, message);
 
     /* Make sure we're in SNES mode */
     if (port == 0) {
@@ -351,7 +351,7 @@ short cli_test_gamepad(short channel, int argc, const char * argv[]) {
             old_game_state_0 = game_state_0;
             old_game_state_1 = game_state_1;
             sprintf(message, "Gamepads: %08X %08X\n", game_state_0, game_state_1);
-            sys_chan_write(channel, message, strlen(message));
+            print(channel, message);
         }
 
         scancode = sys_kbd_scancode();
@@ -488,7 +488,7 @@ short cli_test_uart(short channel, int argc, const char * argv[]) {
     sprintf(buffer, "Serial port loopback test of COM%d at %p...\n", cdev - CDEV_COM1 + 1, (void*)uart_address);
     print(channel, buffer);
 
-    uart = sys_chan_open(cdev, "9600,8,1,NONE", 0);
+    uart = sys_chan_open(cdev, (const uint8_t *)"9600,8,1,NONE", 0);
     if (uart >= 0) {
         sprintf(buffer, "COM%d: 9600, no parity, 1 stop bit, 8 data bits\nPress ESC to finish.\n", cdev - CDEV_COM1 + 1);
         print(channel, buffer);
@@ -543,14 +543,14 @@ short cli_test_rtc(short channel, int argc, const char * argv[]) {
     ticks = sys_time_jiffies();
 
     sprintf(buffer, "Waiting for updated ticks starting from %ld\n", ticks);
-    sys_chan_write(channel, buffer, strlen(buffer));
+    print(channel, buffer);
 
     while (sys_kbd_scancode() != 0x01) {
         if (ticks < sys_time_jiffies()) {
             /* We got the periodic interrupt */
 
             sprintf(buffer, "Tick! %ld\n", ticks);
-            sys_chan_write(channel, buffer, strlen(buffer));
+            print(channel, buffer);
 
             ticks = sys_time_jiffies();
         }
@@ -620,21 +620,21 @@ short cli_mem_test(short channel, int argc, const char * argv[]) {
 
 #if HAS_FLOPPY
 short cli_test_recalibrate(short screen, int argc, const char * argv[]) {
-    unsigned char buffer[512];
+    char buffer[80];                /* 2.2.0: messages only (was unsigned char [512]) */
     short i;
     short result;
 
     bdev_ioctrl(BDEV_FDC, FDC_CTRL_MOTOR_ON, 0, 0);
 
     sprintf(buffer, "Recalibrating the floppy drive\n");
-    sys_chan_write(screen, buffer, strlen(buffer));
+    print(screen, buffer);
 
     if (fdc_recalibrate() == 0) {
         sprintf(buffer, "Success\n");
-        sys_chan_write(screen, buffer, strlen(buffer));
+        print(screen, buffer);
     } else {
         sprintf(buffer, "Failed\n");
-        sys_chan_write(screen, buffer, strlen(buffer));
+        print(screen, buffer);
     }
 
     bdev_ioctrl(BDEV_FDC, FDC_CTRL_MOTOR_OFF, 0, 0);
@@ -642,7 +642,7 @@ short cli_test_recalibrate(short screen, int argc, const char * argv[]) {
 }
 
 short cli_test_seek(short screen, int argc, const char * argv[]) {
-    unsigned char buffer[512];
+    char buffer[80];                /* 2.2.0: messages only (was unsigned char [512]) */
     short i;
     unsigned char cylinder;
     short result;
@@ -652,14 +652,14 @@ short cli_test_seek(short screen, int argc, const char * argv[]) {
     cylinder = (unsigned char)cli_eval_number(argv[1]);
 
     sprintf(buffer, "Seeking to %d\n", (short)cylinder);
-    sys_chan_write(screen, buffer, strlen(buffer));
+    print(screen, buffer);
 
     if (fdc_seek(cylinder) == 0) {
         sprintf(buffer, "Success\n");
-        sys_chan_write(screen, buffer, strlen(buffer));
+        print(screen, buffer);
     } else {
         sprintf(buffer, "Failed\n");
-        sys_chan_write(screen, buffer, strlen(buffer));
+        print(screen, buffer);
     }
 
     bdev_ioctrl(BDEV_FDC, FDC_CTRL_MOTOR_OFF, 0, 0);
@@ -716,8 +716,8 @@ short cli_test_fdc(short screen, int argc, const char * argv[]) {
     } else {
         result = bdev_init(BDEV_FDC);
         if (result != 0) {
-            sprintf(buffer, "Could not initialize FDC: %s\n", sys_err_message(result));
-            sys_chan_write(screen, buffer, strlen(buffer));
+            sprintf((char *)buffer, "Could not initialize FDC: %s\n", sys_err_message(result));
+            print(screen, (char *)buffer);
             return result;
         }
 
@@ -729,7 +729,7 @@ short cli_test_fdc(short screen, int argc, const char * argv[]) {
             n = bdev_write(BDEV_FDC, lba, buffer, 512);
             if (n < 0) {
                 dump_buffer(screen, buffer, 512, 1);
-                sprintf(message, "Unable to write sector %d: %s\n", lba, err_message(n));
+                sprintf(message, "Unable to write sector %lu: %s\n", lba, err_message(n));
                 print(screen, message);
                 bdev_ioctrl(BDEV_FDC, FDC_CTRL_MOTOR_OFF, 0, 0);
                 return n;
@@ -743,7 +743,7 @@ short cli_test_fdc(short screen, int argc, const char * argv[]) {
         n = bdev_read(BDEV_FDC, lba, buffer, 512);
         if (n < 0) {
             dump_buffer(screen, buffer, 512, 1);
-            sprintf(message, "Unable to read sector %d: %s\n", lba, err_message(n));
+            sprintf(message, "Unable to read sector %lu: %s\n", lba, err_message(n));
             print(screen, message);
             bdev_ioctrl(BDEV_FDC, FDC_CTRL_MOTOR_OFF, 0, 0);
             return n;
@@ -902,7 +902,7 @@ static long lan_run(short channel, short w32, short frames, long *bad_bytes) {
         for (t = 0; t < 200000 && (lan_rd(LAN_TX_FIFO_INF) & 0xFFFFUL) < (unsigned long)(4 * words + 16); t++) ;
         if (t >= 200000) {
             sprintf(message, "  frame %d: TX FIFO stays full (TX_FIFO_INF %08lX, INT_STS %08lX)\n", f, lan_rd(LAN_TX_FIFO_INF), lan_rd(0x58));
-            sys_chan_write(channel, message, strlen(message));
+            print(channel, message);
             return -1;
         }
         /* TX command A: first + last segment, buffer size; command B: tag + packet length */
@@ -917,7 +917,7 @@ static long lan_run(short channel, short w32, short frames, long *bad_bytes) {
         for (t = 0; t < 200000; t++) { inf = lan_rd(LAN_RX_FIFO_INF); if (inf & 0x00FF0000UL) break; }
         if (t >= 200000) {
             sprintf(message, "  frame %d (%d bytes): no RX status (RX_FIFO_INF %08lX)\n", f, len, inf);
-            sys_chan_write(channel, message, strlen(message));
+            print(channel, message);
             return -1;
         }
         sts = lan_bswap32(lan_fifo_rd(LAN_RX_STS, w32));
@@ -925,7 +925,7 @@ static long lan_run(short channel, short w32, short frames, long *bad_bytes) {
         if ((sts & 0x8000UL) || rxlen != (unsigned long)len + 4) {
             if (errs < 5) {
                 sprintf(message, "  frame %d: RX status %08lX (length %lu, expected %d)\n", f, sts, rxlen, len + 4);
-                sys_chan_write(channel, message, strlen(message));
+                print(channel, message);
             }
             errs++;
         }
@@ -941,7 +941,7 @@ static long lan_run(short channel, short w32, short frames, long *bad_bytes) {
                     for (q = 0; q < 8; q++) if ((got ^ lan_tx_buf[k]) & (1 << q)) lan_bitbad[q]++;
                     if (*bad_bytes < 5) {
                         sprintf(message, "  frame %d byte %d: %02X, expected %02X\n", f, k, got, lan_tx_buf[k]);
-                        sys_chan_write(channel, message, strlen(message));
+                        print(channel, message);
                     }
                     (*bad_bytes)++;
                 }
@@ -953,11 +953,11 @@ static long lan_run(short channel, short w32, short frames, long *bad_bytes) {
             unsigned long txs = lan_rd(LAN_TX_STS);
             if ((txs & 0x8000UL) && tx_errs++ < 5) {
                 sprintf(message, "  frame %d: TX status %08lX (bit 11 loss of carrier, 10 no carrier, 9 late coll., 8 excess coll., 2 ?, 1 ?)\n", f, txs);
-                sys_chan_write(channel, message, strlen(message));
+                print(channel, message);
             }
         } else if (tx_errs++ < 5) {
             sprintf(message, "  frame %d: no TX status\n", f);
-            sys_chan_write(channel, message, strlen(message));
+            print(channel, message);
         }
     }
     return errs;
@@ -984,7 +984,7 @@ short cli_test_lanbus(short channel, int argc, const char * argv[]) {
         if (v != 0x21436587UL) { rd_err++; x = v ^ 0x21436587UL; for (b = 0; b < 32; b++) if (x & (1UL << b)) bits_rd[b]++; }
     }
     sprintf(message, "BYTE_TEST: %ld reads, %ld wrong\n", n, rd_err);
-    sys_chan_write(channel, message, strlen(message));
+    print(channel, message);
 
     lan_seed = 777;
     for (i = 0; i < n; i++) {
@@ -998,20 +998,20 @@ short cli_test_lanbus(short channel, int argc, const char * argv[]) {
             else { rb_err++; x = (r1 != w) ? (r1 ^ w) : (r2 ^ w); for (b = 0; b < 32; b++) if (x & (1UL << b)) bits_rd[b]++; }
             if (wr_err + rb_err <= 8) {
                 sprintf(message, "  wrote %08lX, read %08lX then %08lX\n", w, r1, r2);
-                sys_chan_write(channel, message, strlen(message));
+                print(channel, message);
             }
         }
     }
     LAN_L(0x68) = lan_bswap32(0x48000000UL);                                    /* FIFO_INT default */
     sprintf(message, "FIFO_INT: %ld write/read pairs, %ld write errors, %ld read errors\n", n, wr_err, rb_err);
-    sys_chan_write(channel, message, strlen(message));
+    print(channel, message);
     sprintf(message, "  wrong bits (CPU D31..D0) read:");
-    sys_chan_write(channel, message, strlen(message));
-    for (b = 31; b >= 0; b--) { sprintf(message, " %lu", bits_rd[b]); sys_chan_write(channel, message, strlen(message)); }
+    print(channel, message);
+    for (b = 31; b >= 0; b--) { sprintf(message, " %lu", bits_rd[b]); print(channel, message); }
     sprintf(message, "\n  wrong bits (CPU D31..D0) write:");
-    sys_chan_write(channel, message, strlen(message));
-    for (b = 31; b >= 0; b--) { sprintf(message, " %lu", bits_wr[b]); sys_chan_write(channel, message, strlen(message)); }
-    sys_chan_write(channel, "\n", 1);
+    print(channel, message);
+    for (b = 31; b >= 0; b--) { sprintf(message, " %lu", bits_wr[b]); print(channel, message); }
+    print(channel, "\n");
     return (rd_err + wr_err + rb_err) ? -1 : 0;
 }
 
@@ -1033,27 +1033,27 @@ short cli_test_lan(short channel, int argc, const char * argv[]) {
 
     b0 = LAN_W(LAN_BYTE_TEST); b1 = LAN_W(LAN_BYTE_TEST + 2); bt = LAN_L(LAN_BYTE_TEST);
     sprintf(message, "BYTE_TEST: words %04X %04X (expect 2143 6587), longword %08lX (expect 21436587)\n", b0, b1, bt);
-    sys_chan_write(channel, message, strlen(message));
-    if (bt != 0x21436587UL) { sprintf(message, "LAN9221 not answering correctly - stopped\n"); sys_chan_write(channel, message, strlen(message)); return -1; }
+    print(channel, message);
+    if (bt != 0x21436587UL) { sprintf(message, "LAN9221 not answering correctly - stopped\n"); print(channel, message); return -1; }
     for (t = 0; t < 100000 && !(lan_rd(LAN_PMT_CTRL) & 1); t++) ;
-    if (!(lan_rd(LAN_PMT_CTRL) & 1)) { sprintf(message, "LAN9221 not READY - stopped\n"); sys_chan_write(channel, message, strlen(message)); return -1; }
+    if (!(lan_rd(LAN_PMT_CTRL) & 1)) { sprintf(message, "LAN9221 not READY - stopped\n"); print(channel, message); return -1; }
 
     /* MCP 134: a network cable with a link partner upsets the PHY loopback (frames cut at 136 bytes, loss of carrier):
        warn when the PHY has a link (basic status bit 2, read twice: the bit latches low) */
     if (!lan_phy_rd(1, &bmsr) && !lan_phy_rd(1, &bmsr) && (bmsr & 0x0004)) {
         sprintf(message, "Note: network link is up - the PHY loopback still works (2.0.20: store and forward fixed the old 136-byte cut)\n");
-        sys_chan_write(channel, message, strlen(message));
+        print(channel, message);
     }
     /* PHY loopback at a fixed 100 Mbit full duplex (auto-negotiation off), so the MII clocks are stable without a
        cable; MAC: full duplex + promiscuous, TX + RX on. (MAC-internal loopback still runs on the PHY's MII clocks,
        which change speed while the PHY auto-negotiates: frames were cut after 136 bytes.) */
     if (lan_mac_wr(1, 0) || lan_phy_wr(0, 0x6100)) {
-        sprintf(message, "MAC / PHY access failed - stopped\n"); sys_chan_write(channel, message, strlen(message)); return -1;
+        sprintf(message, "MAC / PHY access failed - stopped\n"); print(channel, message); return -1;
     }
     for (t = 0; t < sys_scale_loops(300000); t++) ;                         /* let the PHY settle (a few ms) */
     lan_wr(0x58, 0xFFFFFFFFUL);                                               /* clear INT_STS */
     if (lan_mac_wr(1, (1UL << 20) | (1UL << 18) | (1UL << 3) | (1UL << 2))) {
-        sprintf(message, "MAC CSR busy - stopped\n"); sys_chan_write(channel, message, strlen(message)); return -1;
+        sprintf(message, "MAC CSR busy - stopped\n"); print(channel, message); return -1;
     }
     lan_wr(0x74, lan_rd(0x74) | 0x00100000UL);                                /* 2.0.20: HW_CFG.SF, store and forward */
     lan_wr(LAN_TX_CFG, 0x0000C000UL);                                         /* TX status + data dump */
@@ -1070,15 +1070,15 @@ short cli_test_lan(short channel, int argc, const char * argv[]) {
         if (bad) {
             short q;
             sprintf(message, "  wrong bits per data bit 0..7:");
-            sys_chan_write(channel, message, strlen(message));
-            for (q = 0; q < 8; q++) { sprintf(message, " %lu", lan_bitbad[q]); sys_chan_write(channel, message, strlen(message)); }
-            sys_chan_write(channel, "\n", 1);
+            print(channel, message);
+            for (q = 0; q < 8; q++) { sprintf(message, " %lu", lan_bitbad[q]); print(channel, message); }
+            print(channel, "\n");
         }
         sprintf(message, "%s accesses: %d frames, %ld bad RX status, %ld bad bytes, RX_DROP %lu, INT_STS %08lX -> %s\n",
                 w32 ? "32-bit" : "16-bit", frames, errs < 0 ? 0L : errs, bad, lan_rd(LAN_RX_DROP), lan_rd(0x58),
                 (errs == 0 && bad == 0) ? "PASS" : "FAIL");
         lan_wr(0x58, 0xFFFFFFFFUL);
-        sys_chan_write(channel, message, strlen(message));
+        print(channel, message);
         total += (errs < 0 ? 1 : errs) + bad;
     }
     lan_mac_wr(1, 0);                                                        /* MAC off again */
@@ -1365,7 +1365,7 @@ short cli_test_create(short screen, int argc, const char * argv[]) {
         short channel = fsys_open(argv[1], FA_CREATE_NEW | FA_WRITE);
         if (channel >= 0) {
             char * message = "Hello, world!\n";
-            n = chan_write(channel, message, strlen(message));
+            n = chan_write(channel, (const uint8_t *)message, strlen(message));
             if (n <= 0) {
                 err_print(screen, "Unable to write to file", n);
             }
@@ -1390,9 +1390,9 @@ short cli_test_lpt(short screen, int argc, const char * argv[]) {
     unsigned char scancode;
 
     sprintf(message, "Test parallel port:\nF1: DATA='B'  F2: DATA='A'  F3: STRB=1  F4: STRB=0\n");
-    sys_chan_write(screen, message, strlen(message));
+    print(screen, message);
     sprintf(message, "F5: INIT=1  F6: INIT=0  F7: SEL=1  F8: SEL=0\nESC: Quit\n");
-    sys_chan_write(screen, message, strlen(message));
+    print(screen, message);
 
     unsigned char ctrl = 0;
     *LPT_CTRL_PORT = ctrl;
@@ -1480,7 +1480,7 @@ short cmd_test_print(short screen, int argc, const char * argv[]) {
         print(screen, "Sending test patterns to printer (ESC to quit)...\n");
 
         while (scancode != 0x01) {
-            short result = sys_chan_write(lpt, test_pattern, strlen(test_pattern));
+            short result = sys_chan_write(lpt, (const unsigned char *)test_pattern, strlen(test_pattern));
             if (result != 0) {
                 sprintf(message, "Unable to print: %s\n", err_message(result));
                 print(screen, message);
@@ -1534,10 +1534,10 @@ short cmd_test_ansi(short screen, int argc, const char * argv[]) {
         }
 
         sprintf(buffer, "\x1b[%dm%10s\x1b[37;44m \x1b[30;%dm%10s\x1b[37;44m", 30 + i, color_name, 40 + i, color_name);
-        sys_chan_write(screen, buffer, strlen(buffer));
+        print(screen, buffer);
 
         sprintf(buffer, "\t\x1b[%dm%10s\x1b[37;44m \x1b[30;%dm%10s\x1b[37;44m\n", 90 + i, color_name, 100 + i, color_name);
-        sys_chan_write(screen, buffer, strlen(buffer));
+        print(screen, buffer);
     }
 
     print(screen, "\x1b[1;13H0123456789ABCDEF\x1b[6;13H\x1b[2@^^\x1b[20;13H<--2 characters inserted");

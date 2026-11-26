@@ -773,7 +773,7 @@ short midi_tx_test(short channel, int argc, const char * argv[]) {
     print(channel, "Press '1' to start, 'ESC' to quit.\n");
     while (sys_kbd_scancode() != 0x02) ;
 
-    short midi = sys_chan_open(CDEV_MIDI, "", 0);
+    short midi = sys_chan_open(CDEV_MIDI, (const uint8_t *)"", 0);
     if (midi > 0) {
         while (sys_kbd_scancode() != 0x01) {
             long target_jiffies = 0;
@@ -820,7 +820,7 @@ short midi_rx_test(short channel, int argc, const char * argv[]) {
     print(channel, "Press '1' to start, and 'ESC' to exit test.\n");
     while (sys_kbd_scancode() != 0x02) ;
 
-    short midi = sys_chan_open(CDEV_MIDI, "", 0);
+    short midi = sys_chan_open(CDEV_MIDI, (const uint8_t *)"", 0);
     if (midi > 0) {
 
         i = 0;
@@ -835,10 +835,10 @@ short midi_rx_test(short channel, int argc, const char * argv[]) {
             if ((input != 0xf8) && (input != 0xfe)) {
                 if ((i % 16) == 0) {
                     sprintf(message, "\n%02X", input);
-                    sys_chan_write(channel, message, strlen(message));
+                    print(channel, message);
                 } else {
                     sprintf(message, " %02X", input);
-                    sys_chan_write(channel, message, strlen(message));
+                    print(channel, message);
                 }
 
                 i++;
@@ -872,7 +872,7 @@ short midi_loop_test(short channel, int argc, const char * argv[]) {
 
     while (sys_kbd_scancode() != 0x02) ;
 
-    short midi = sys_chan_open(CDEV_MIDI, "", 0);
+    short midi = sys_chan_open(CDEV_MIDI, (const uint8_t *)"", 0);
     if (midi > 0) {
         output = 1;
         while (scancode != 0x01) {
@@ -893,7 +893,7 @@ short midi_loop_test(short channel, int argc, const char * argv[]) {
                 return 0;
             }
             sprintf(message, "%02X\n", (unsigned char)input);
-            sys_chan_write(channel, message, strlen(message));
+            print(channel, message);
 
             scancode = sys_kbd_scancode();
 
@@ -903,7 +903,7 @@ short midi_loop_test(short channel, int argc, const char * argv[]) {
             }
         }
 
-        sys_chan_write(channel, "\n", 1);
+        print(channel, "\n");
         sys_chan_close(midi);
     } else {
         sprintf(message, "Couldn't open MIDI port: %s\n", sys_err_message(midi));

@@ -219,7 +219,7 @@ short uart_open(p_channel chan, const uint8_t * spec, short mode) {
     char * saveptr;
     char spec_copy[160];
     char *token = 0;
-    short i = 0;
+    long i = 0;                     /* 2.2.0: long, not short: 38400, 57600 and 115200 do not fit in a short */
     short bps_code = 0;
     short lcr_code = 0;
 
@@ -227,7 +227,7 @@ short uart_open(p_channel chan, const uint8_t * spec, short mode) {
     uart_init(cdev_to_uart(chan->dev));
 
     // Make a local copy of the specification so we can tokenize it
-    strncpy(spec_copy, spec, 80);
+    strncpy(spec_copy, (const char *)spec, 80);
 
     // Get the first token
     saveptr = spec_copy;
