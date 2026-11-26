@@ -101,6 +101,11 @@ fixes the last compiler faults that 2.1.x worked around. The workarounds and
 `tools/calypsi_check.py` are gone, and the build stops with an older Calypsi
 (see "Building with Calypsi").
 
+**Colour 8 is dark grey again.** Colour 8 ("bright black", `ESC[90m`) was
+almost black (0x202020) on the A2560K: a test meant for the A2560X only was
+always true. It is now the dark grey 0x555555. The 8-pixel purple border stays
+as it was, so programs keep the same screen size.
+
 Released together with lvboot 1.5, which has the same SD and IDE fixes (see
 [lvboot/README.md](lvboot/README.md)).
 
