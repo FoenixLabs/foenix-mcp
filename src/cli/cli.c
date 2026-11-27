@@ -1856,6 +1856,7 @@ short cmd_clock(short channel, int argc, const char * argv[]) {
 void cli_rerepl() {
     /* 2.1.0: a program that crashed did not reach its normal end: close its sockets here */
     net_program_reset();
+    mem_program_reset();    /* 2.2.0: and frees its SDRAM blocks */
 
     // Start up the command shell
     cli_command_get(cli_command_path);

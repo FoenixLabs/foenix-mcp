@@ -20,6 +20,7 @@
 #include "dev/channel.h"
 #include "topbar.h"
 #include "net/net_sys.h"
+#include "memory.h"
 
 static const long k_default_stack = 0x00010000;     /* For now... we're just going to put the user stack under 0x00010000 */
 static int g_proc_result;
@@ -160,7 +161,9 @@ short proc_run(const char * path, int argc, char * argv[]) {
 
             /* 2.1.0: the sockets the program leaves open are closed when it ends */
             net_program_start();
+            mem_program_start(path);    /* 2.2.0: and the SDRAM blocks it did not keep are freed */
             proc_exec(start, k_default_stack, argc, argv);
+            mem_program_end();
             net_program_end();
 
             topbar_set_user(screen, 0);

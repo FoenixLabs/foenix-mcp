@@ -34,7 +34,7 @@ MCP_INTERRUPT = "src/interrupt.h"
 MCP_DISPATCH = "src/m68040/bios_m68040.c"
 MCP_TYPE_FILES = ["src/include/types.h", "src/include/constants.h", "src/sys_general.h",
                   "src/dev/channel.h", "src/dev/block.h", "src/dev/fsys.h", "src/dev/rtc.h",
-                  "src/dev/txt_screen.h"]
+                  "src/dev/txt_screen.h", "src/memory.h"]
 
 SDK = "sdk/calypsi"
 SDK_SYSCALLS = SDK + "/include/mcp/syscalls.h"
@@ -45,7 +45,7 @@ SDK_SOURCE = SDK + "/src/mcp_syscalls.c"
 
 # The records whose layout must match
 RECORDS = ["s_extent", "s_point", "s_rect", "s_color3", "s_color4", "s_channel", "s_dev_chan",
-           "s_dev_block", "s_file_info", "s_time", "s_sys_info", "s_txt_capabilities"]
+           "s_dev_block", "s_file_info", "s_time", "s_sys_info", "s_txt_capabilities", "s_mem_info"]
 
 # Dispatcher cases the SDK has no function for, on purpose
 NOT_IN_SDK = re.compile(r"^KFN_(NET_\w+|WARMBOOT)$")

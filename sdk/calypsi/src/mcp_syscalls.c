@@ -313,6 +313,24 @@ unsigned long sys_mem_reserve(unsigned long bytes) {
     return (unsigned long) syscall(KFN_MEM_RESERVE, &params);
 }
 
+/* 2.2.0: get a block of SDRAM (KFN_MEM_ALLOC) */
+unsigned long sys_mem_alloc(unsigned long size, unsigned short flags) {
+    t_syscall_params params = {.arg1 = (int32_t) size, .arg2 = (int32_t) flags};
+    return (unsigned long) syscall(KFN_MEM_ALLOC, &params);
+}
+
+/* 2.2.0: give a block of SDRAM back (KFN_MEM_FREE) */
+short sys_mem_free(unsigned long address) {
+    t_syscall_params params = {.arg1 = (int32_t) address};
+    return (short) syscall(KFN_MEM_FREE, &params);
+}
+
+/* 2.2.0: how much SDRAM there is (KFN_MEM_INFO) */
+short sys_mem_info(p_mem_info info) {
+    t_syscall_params params = {.arg1 = (int32_t) info};
+    return (short) syscall(KFN_MEM_INFO, &params);
+}
+
 /* Set a system variable (KFN_VAR_SET) */
 short sys_var_set(const char * name, const char * value) {
     t_syscall_params params = {.arg1 = (int32_t) name, .arg2 = (int32_t) value};

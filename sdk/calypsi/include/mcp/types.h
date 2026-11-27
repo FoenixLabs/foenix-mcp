@@ -267,6 +267,25 @@ typedef struct s_sys_info {
 } t_sys_info, *p_sys_info;
 
 /*=========================================
+ * SDRAM blocks (src/memory.h), 2.2.0
+ *========================================*/
+
+#define MEM_PAGE_SIZE       4096    /* sys_mem_alloc hands out whole pages of this size */
+#define MEM_KEEP            0x0001  /* sys_mem_alloc: the block stays after the program ends */
+#define MEM_CLEAR           0x0002  /* sys_mem_alloc: fill the block with zeroes */
+
+/* The answer of sys_mem_info */
+typedef struct s_mem_info {
+    uint32_t sdram_base;            /* First byte of the SDRAM; 0: this machine has none */
+    uint32_t sdram_size;            /* Bytes of SDRAM (0: none) */
+    uint32_t sdram_free;            /* Bytes of SDRAM not in a block */
+    uint32_t sdram_largest;         /* The largest block sys_mem_alloc can give now */
+    uint32_t ram_top;               /* The top of the system RAM programs may use (sys_mem_get_ramtop) */
+    uint16_t blocks;                /* SDRAM blocks in use */
+    uint16_t max_blocks;            /* SDRAM blocks the MCP can keep track of */
+} t_mem_info, *p_mem_info;
+
+/*=========================================
  * Text screens (src/dev/txt_screen.h)
  *========================================*/
 

@@ -94,6 +94,38 @@ Measured on an A2560K25 at 1024 x 768, one page of 60 rows x 157 characters:
 | each row with one `sys_chan_write` | 870 ms | 91-105 ms |
 | `sys_txt_scroll` by one row | not measured | 19 ms |
 
+## SDRAM (MCP 2.2.0)
+
+An A2560K has 64 MB of SDRAM next to its 4 MB of system RAM. A program asks
+the MCP for a block of it:
+
+```c
+#include <mcp/syscalls.h>
+
+t_mem_info info;
+unsigned char * buffer;
+
+sys_mem_info(&info);                      /* info.sdram_size is 0: no SDRAM */
+buffer = (unsigned char *)sys_mem_alloc(1024 * 1024, MEM_CLEAR);
+if (buffer == 0) {
+    /* no room, or no SDRAM on this machine: always check */
+}
+/* ... use the megabyte ... */
+sys_mem_free((unsigned long)buffer);
+```
+
+- Blocks are whole pages of `MEM_PAGE_SIZE` (4 KB) and start on a page.
+- `MEM_CLEAR` fills the block with zeroes; without it the block holds
+  whatever was there.
+- The MCP frees a program's blocks when it ends, also after `sys_exit` or a
+  crash, so a program that forgets one loses nothing. A block allocated with
+  `MEM_KEEP` stays, for data that must outlive the program; any program may
+  free it.
+- `sys_mem_free` refuses a block that belongs to the MCP or to another
+  program (`ERR_PROTECTED_MEMORY`).
+- Don't use fixed SDRAM addresses: ask the MCP. A future machine may have its
+  SDRAM elsewhere, or none.
+
 ## Building the libraries
 
 On the computer with Calypsi:
@@ -112,6 +144,9 @@ make                              # every library in lib/, and test/sdktest.pgz
 - text in the top bar
 - `sys_proc_elevate` (refused in 2.1.0)
 - a file written and read with `fopen`
+- SDRAM blocks (`sys_mem_info`, `sys_mem_alloc`, `sys_mem_free`); it leaves
+  one block for the MCP to free at the end, so `TEST SDRAM` afterwards shows
+  0 blocks in use
 
 Run it from the MCP command line and check the values. It is built for the
 68000 with large code and data (`mcp_syscalls-68000-lc-ld.a`) and runs on

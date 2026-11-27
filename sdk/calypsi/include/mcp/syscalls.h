@@ -94,6 +94,9 @@
 #define KFN_ELEVATE             0x43    /* Go to supervisor mode (2.1.0: refused, ERR_NOT_SUPPORTED) */
 #define KFN_VAR_SET             0x44    /* Set a system variable */
 #define KFN_VAR_GET             0x45    /* Get a system variable */
+#define KFN_MEM_ALLOC           0x46    /* 2.2.0: Get a block of SDRAM */
+#define KFN_MEM_FREE            0x47    /* 2.2.0: Give a block of SDRAM back */
+#define KFN_MEM_INFO            0x48    /* 2.2.0: How much SDRAM there is and how much is free */
 
 /* Other calls */
 #define KFN_TIME_JIFFIES        0x50    /* Ticks since the start */
@@ -372,6 +375,31 @@ extern unsigned long sys_mem_get_ramtop(void);
 
 /* Reserve memory at the top of RAM. Input: bytes. Output: the address of the block. */
 extern unsigned long sys_mem_reserve(unsigned long bytes);
+
+/*
+ * 2.2.0: get a block of SDRAM. The MCP hands out whole pages of MEM_PAGE_SIZE (4 KB) bytes.
+ * Input:  size = bytes wanted; flags = 0, or MEM_KEEP and / or MEM_CLEAR:
+ *         MEM_KEEP  the block stays after the program ends (without it the MCP frees the block
+ *                   when the program ends, calls sys_exit or crashes)
+ *         MEM_CLEAR the block is filled with zeroes
+ * Output: the block's address, or 0: no room, or the machine has no SDRAM. Always check for 0.
+ */
+extern unsigned long sys_mem_alloc(unsigned long size, unsigned short flags);
+
+/*
+ * 2.2.0: give a block of SDRAM back.
+ * Input:  address = what sys_mem_alloc returned
+ * Output: 0; ERR_NOT_FOUND if no block starts there; ERR_PROTECTED_MEMORY if the block is not
+ *         this program's (a MEM_KEEP block may be freed by any program)
+ */
+extern short sys_mem_free(unsigned long address);
+
+/*
+ * 2.2.0: how much SDRAM there is and how much is free.
+ * Input:  info = where to put the answer
+ * Output: 0, or ERR_BAD_ARGUMENT. On a machine without SDRAM, sdram_size is 0.
+ */
+extern short sys_mem_info(p_mem_info info);
 
 /* Set a system variable. Input: name, value. Output: 0, or a negative error. */
 extern short sys_var_set(const char * name, const char * value);

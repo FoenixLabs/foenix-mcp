@@ -640,6 +640,21 @@ unsigned long sys_mem_get_ramtop() {
  }
 
 /*
+ * 2.2.0: sys_mem_alloc / sys_mem_free / sys_mem_info - SDRAM blocks (see syscalls.h)
+ */
+unsigned long sys_mem_alloc(unsigned long size, unsigned short flags) {
+    return (unsigned long)syscall(KFN_MEM_ALLOC, size, flags);
+}
+
+short sys_mem_free(unsigned long address) {
+    return (short)syscall(KFN_MEM_FREE, address);
+}
+
+short sys_mem_info(p_mem_info info) {
+    return (short)syscall(KFN_MEM_INFO, info);
+}
+
+/*
  * Miscellaneous
  */
 
