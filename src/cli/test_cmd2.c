@@ -35,6 +35,7 @@
 #include "vicky_general.h"
 #include "netpool.h"
 #include "memory.h"
+#include "cli/mem_cmds.h"
 
 #if MODEL == MODEL_FOENIX_A2560K
 #include "dev/kbd_mo.h"
@@ -564,7 +565,7 @@ short cli_test_rtc(short channel, int argc, const char * argv[]) {
  * Test the memory
  * MEM [SYS|MERA]
  */
-short cli_mem_test(short channel, int argc, const char * argv[]) {
+static short mem_test_run(short channel, int argc, const char * argv[]) {
     volatile unsigned char * memory = 0x00000000;
     t_sys_info sys_info;
     unsigned long mem_start = 0x00010000;
@@ -617,6 +618,27 @@ short cli_mem_test(short channel, int argc, const char * argv[]) {
     print(channel, "\x1B[1;3H\x1B[0KMemory passed basic tests.\n\n");
 
     return 0;
+}
+
+/*
+ * TEST MEM [SYS|MERA]: 2.2.0: MERA writes all of the SDRAM, so it takes all of it from the allocator
+ * first; it does not run while any SDRAM block is in use (MEM shows them)
+ * Input:  channel, argc, argv as for every TEST   Output: 0, or ERR_GENERAL
+ */
+short cli_mem_test(short channel, int argc, const char * argv[]) {
+    t_mem_sdram_info sdram;
+    short result;
+
+    if (argc > 1 && ((strcmp(argv[1], "MERA") == 0) || (strcmp(argv[1], "mera") == 0))) {
+        mem_sdram_get_info(&sdram);
+        if (sdram.size == 0 || !mem_test_claim(channel, sdram.base, sdram.size, "TEST MEM")) {
+            return ERR_GENERAL;
+        }
+        result = mem_test_run(channel, argc, argv);
+        mem_sdram_free(sdram.base);
+        return result;
+    }
+    return mem_test_run(channel, argc, argv);
 }
 
 #if HAS_FLOPPY
@@ -1337,7 +1359,7 @@ static long filecmp_read(short screen, const char * path, unsigned char * dst, l
     return total;
 }
 
-short cli_test_filecmp(short screen, int argc, const char * argv[]) {
+static short filecmp_run(short screen, int argc, const char * argv[]) {
     char message[100];
     unsigned char * a = (unsigned char *)0x03000000;
     unsigned char * b = (unsigned char *)0x03800000;
@@ -1357,6 +1379,22 @@ short cli_test_filecmp(short screen, int argc, const char * argv[]) {
     }
     if (na == nb) print(screen, "FILECMP: SAME\n");
     return 0;
+}
+
+/*
+ * TEST FILECMP: 2.2.0: takes its 16 MB of SDRAM ($0300_0000 - $03FF_FFFF) from the allocator first
+ * Input:  screen, argc, argv as for every TEST   Output: 0, or ERR_GENERAL (also when the area is in use)
+ */
+short cli_test_filecmp(short screen, int argc, const char * argv[]) {
+    short result;
+
+    if (argc < 2) { print(screen, "USAGE: TEST FILECMP <path a> [<path b>]\n"); return ERR_GENERAL; }
+    if (!mem_test_claim(screen, 0x03000000UL, 0x01000000UL, "TEST FILECMP")) {
+        return ERR_GENERAL;
+    }
+    result = filecmp_run(screen, argc, argv);
+    mem_sdram_free(0x03000000UL);
+    return result;
 }
 
 short cli_test_create(short screen, int argc, const char * argv[]) {

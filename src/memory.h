@@ -160,7 +160,7 @@ extern void mem_program_end(void);
 
 /*
  * mem_program_reset - the command line was restarted after a crash: free the blocks of every
- * program that was running (kept blocks stay)
+ * program that was running, and of a TEST command (kept and MCP blocks stay)
  * Input: none   Output: none
  */
 extern void mem_program_reset(void);
