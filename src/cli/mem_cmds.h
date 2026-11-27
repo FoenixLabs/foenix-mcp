@@ -105,4 +105,10 @@ extern short mem_cmd_call(short channel, int argc, const char * argv[]);
  */
 extern short mem_cmd_mem(short channel, int argc, const char * argv[]);
 
+/*
+ * 2.2.0: mem_test_claim - a TEST command takes the fixed SDRAM area it uses (see mem_cmds.c)
+ * Input:  channel, start, size, name   Output: start, or 0 if the area is in use (a message says so)
+ */
+extern uint32_t mem_test_claim(short channel, uint32_t start, uint32_t size, const char * name);
+
 #endif

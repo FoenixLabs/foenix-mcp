@@ -280,9 +280,12 @@ void mem_program_end(void) {
 void mem_program_reset(void) {
     short i = 0;
 
-    /* Every block of any program level; kept, TEST and MCP blocks stay */
+    /* Every block of any program level, and of a TEST command that crashed (no test runs after a
+       restart, so its claim would otherwise block that test until the next reset); kept and MCP
+       blocks stay */
     while (i < mem_block_count) {
-        if (mem_blocks[i].owner >= 1 && mem_blocks[i].owner <= MEM_OWNER_LAST_LEVEL) {
+        if ((mem_blocks[i].owner >= 1 && mem_blocks[i].owner <= MEM_OWNER_LAST_LEVEL) ||
+            mem_blocks[i].owner == MEM_OWNER_TEST) {
             block_remove(i);
         } else {
             i++;

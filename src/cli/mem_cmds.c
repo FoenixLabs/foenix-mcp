@@ -321,3 +321,23 @@ short mem_cmd_mem(short channel, int argc, const char * argv[]) {
     }
     return 0;
 }
+
+/*
+ * 2.2.0: mem_test_claim - a TEST command that uses a fixed SDRAM area takes it first, so it cannot
+ * overwrite a block a program or the MCP is using, and nothing can be allocated there while it runs
+ *
+ * Input:  channel = where to print a refusal; start, size = the area; name = the test's name (shown by MEM)
+ * Output: start if the area is now the test's (give it back with mem_sdram_free(start)), or 0: the
+ *         machine has no SDRAM there or part of the area is in use (a message says so)
+ */
+uint32_t mem_test_claim(short channel, uint32_t start, uint32_t size, const char * name) {
+    char line[120];
+
+    if (mem_sdram_claim(start, size, MEM_OWNER_TEST, name) == start) {
+        return start;
+    }
+    sprintf(line, "%s needs SDRAM $%08lX - $%08lX, but part of it is in use (see MEM) or not there.\n",
+            name, (unsigned long)start, (unsigned long)(start + size - 1));
+    print(channel, line);
+    return 0;
+}

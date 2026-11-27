@@ -12,6 +12,8 @@
 #include "simpleio.h"
 #include "g1tests.h"
 #include "cache.h"
+#include "memory.h"
+#include "cli/mem_cmds.h"
 
 u32 g1t_r[64];
 u32 g1t_d[128];
@@ -64,7 +66,7 @@ static const char * const dac_names[19] = {
     "rate AUD3 / AUD2 x 10000", "address outside the banks: STARVE, silence", "STARVE cleared",
     "test tone: changes seen" };
 
-short cli_test_dac(short ch, int argc, const char * argv[])
+static short g1t_dac_cmd(short ch, int argc, const char * argv[])
 {
     char m[160];
     long mode = g1t_arg(argc, argv, 1, 0), secs = g1t_arg(argc, argv, 2, 5);
@@ -125,7 +127,7 @@ static void print_pairs(short ch, const u32 *w)
     print(ch, "\n");
 }
 
-short cli_test_gdma(short ch, int argc, const char * argv[])
+static short g1t_gdma_cmd(short ch, int argc, const char * argv[])
 {
     static const char * const sp[14] = { "", "SDRAM copy", "SDRAM fill", "SDRAM odd-byte copy", "", "SDRAM -> SRAM",
         "SRAM -> SDRAM", "SRAM -> SRAM", "SDRAM -> VRAM A", "VRAM A -> SDRAM", "VRAM B -> VRAM B", "SRAM fill",
@@ -181,7 +183,7 @@ short cli_test_gdma(short ch, int argc, const char * argv[])
 
 /* ---- TEST BLIT [mode] [seconds]: 0 = random blits + lists over all four banks (checked, GDMA beside), 4 = diagnostics,
  *      speed modes 1-3, 5-22 as blitrun.sh ---- */
-short cli_test_blit(short ch, int argc, const char * argv[])
+static short g1t_blit_cmd(short ch, int argc, const char * argv[])
 {
     static const char * const sp[23] = { "", "SDRAM fill 16 bpp", "SDRAM copy 16 bpp", "SDRAM scroll 16 bpp", "",
         "SDRAM XOR fill 16 bpp", "SDRAM keyed copy 16 bpp", "VRAM B fill 8 bpp", "SDRAM -> VRAM A copy 16 bpp",
@@ -252,4 +254,52 @@ short cli_test_blit(short ch, int argc, const char * argv[])
         return bad ? -1 : 0;
     }
     return 0;
+}
+
+/*
+ * 2.2.0: the TEST DAC / GDMA / BLIT commands. Each takes its SDRAM areas from the allocator first
+ * (mem_test_claim), runs the test, and gives them back. A test whose area is in use does not run.
+ *
+ * g1t_sdram_test - claim the tests' SDRAM, run one test, free the SDRAM
+ * Input:  ch, argc, argv = the command line; test = the test to run; name = for the refusal and MEM;
+ *         last_page = 1 for TEST BLIT, which also blits at the very end of the SDRAM ($05FF_FFF0)
+ * Output: the test's result, or -1 if the SDRAM was in use
+ */
+#define G1T_SDRAM       0x03000000UL    /* $0300_0000 - $04FF_FFFF: every SDRAM area of the three tests */
+#define G1T_SDRAM_SIZE  0x02000000UL
+#define G1T_LAST_PAGE   0x05FFF000UL    /* TEST BLIT's "leaves the SDRAM" check */
+
+static short g1t_sdram_test(short ch, int argc, const char * argv[],
+                            short (*test)(short, int, const char * []), const char * name, short last_page) {
+    short result;
+
+    if (!mem_test_claim(ch, G1T_SDRAM, G1T_SDRAM_SIZE, name)) {
+        return -1;
+    }
+    if (last_page && !mem_test_claim(ch, G1T_LAST_PAGE, MEM_PAGE_SIZE, name)) {
+        mem_sdram_free(G1T_SDRAM);
+        return -1;
+    }
+    result = test(ch, argc, argv);
+    mem_sdram_free(G1T_SDRAM);
+    if (last_page) {
+        mem_sdram_free(G1T_LAST_PAGE);
+    }
+    return result;
+}
+
+/* TEST DAC [mode] [seconds]. Mode 2 leaves the tone playing from SDRAM after the command ends;
+   once the area is free again, a program that writes there only changes the sound. */
+short cli_test_dac(short ch, int argc, const char * argv[]) {
+    return g1t_sdram_test(ch, argc, argv, g1t_dac_cmd, "TEST DAC", 0);
+}
+
+/* TEST GDMA [mode] [seconds] */
+short cli_test_gdma(short ch, int argc, const char * argv[]) {
+    return g1t_sdram_test(ch, argc, argv, g1t_gdma_cmd, "TEST GDMA", 0);
+}
+
+/* TEST BLIT [mode] [seconds] */
+short cli_test_blit(short ch, int argc, const char * argv[]) {
+    return g1t_sdram_test(ch, argc, argv, g1t_blit_cmd, "TEST BLIT", 1);
 }
