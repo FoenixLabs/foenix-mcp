@@ -3,11 +3,10 @@
  *
  * 2.1.0: the network pool, the memory FELINC (the TCP/IP stack in the MCP) uses for its buffers.
  *
- * At boot the MCP takes NETPOOL_SIZE bytes from the top of system RAM with mem_reserve, so the
- * top of memory (sys_mem_get_ramtop) moves down by that much. Programs, the program loader and VI
- * stay below the top of memory, so they never use the pool. On the A2560K the pool is
- * $0038_0000 - $0039_FFFF: Calypsi programs keep their data below $0038_0000 and VBCC programs
- * stay below $0032_0000, so no program has to change.
+ * 2.2.0: at boot the MCP takes NETPOOL_SIZE bytes of SDRAM as an MCP block (on the A2560K the
+ * first block, $0200_0000 - $0201_FFFF). On a machine without SDRAM it takes them from the top of
+ * system RAM with mem_reserve, as 2.1.0 did on the A2560K ($0038_0000 - $0039_FFFF): the top of
+ * memory (sys_mem_get_ramtop) then moves down by that much, and programs stay below it.
  *
  * netpool_alloc and netpool_free work like malloc and free, on the pool only. FELINC allocates
  * when the network starts and when a socket opens, and frees when a socket closes.
@@ -22,8 +21,8 @@
 #define NETPOOL_SIZE    0x20000     /* 128 KB */
 
 /**
- * Take the pool from the top of system RAM and make it one free block. Call once at boot,
- * after mem_init.
+ * Take the pool (SDRAM, or the top of system RAM without SDRAM) and make it one free block.
+ * Call once at boot, after mem_init and mem_sdram_init.
  */
 extern void netpool_init(void);
 

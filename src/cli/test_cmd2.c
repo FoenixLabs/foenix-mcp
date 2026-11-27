@@ -1762,14 +1762,14 @@ static void sdram_check(short screen, short ok, const char * what, short * passe
  * answer, and give everything back at the end
  * Input:  screen, argc, argv as for every TEST   Output: 0 if every check passed, else ERR_GENERAL
  *
- * The address checks assume no other blocks are in use (true in 2.2.0 until the network pool
- * moves to SDRAM); the test says so when it finds other blocks.
+ * Blocks already in use (the network pool) stay; the address checks start at the first free page
+ * and need the 16 MB after it free.
  */
 short cli_test_sdram(short screen, int argc, const char * argv[]) {
     char message[100];
     t_mem_sdram_info start, info;
     t_mem_block block, previous;
-    uint32_t a, b, c, d, e, x;
+    uint32_t a, b, c, d, e, x, first;
     uint32_t * lp;
     unsigned char * bp;
     short passed = 0, total = 0, n, i, ok;
@@ -1783,13 +1783,22 @@ short cli_test_sdram(short screen, int argc, const char * argv[]) {
         print(screen, "This machine has no SDRAM: nothing to test.\n");
         return 0;
     }
+    /* 2.2.0: other blocks (the network pool at the start, for one) stay; first fit gives the first
+       free page, after the blocks that start at the base. The checks below need 16 MB free there. */
+    first = start.base;
+    for (i = 0; mem_sdram_get_block(i, &block) == 0; i++) {
+        if (block.start == first) {
+            first = block.start + block.pages * MEM_PAGE_SIZE;
+        }
+    }
     if (start.blocks != 0) {
-        print(screen, "Other blocks are in use: the address checks below may fail for that reason.\n");
+        sprintf(message, "%u blocks in use: the first free page is $%08lX\n", (unsigned)start.blocks, (unsigned long)first);
+        print(screen, message);
     }
 
     /* Allocation: whole pages, one after the other */
     a = mem_sdram_alloc(1, 0, MEM_OWNER_TEST, "test-a");
-    sdram_check(screen, a == start.base, "1 byte gets the first page", &passed, &total);
+    sdram_check(screen, a == first, "1 byte gets the first free page", &passed, &total);
     b = mem_sdram_alloc(5000, 0, MEM_OWNER_TEST, "test-b");
     sdram_check(screen, b == a + MEM_PAGE_SIZE, "5000 bytes come right after it", &passed, &total);
     c = mem_sdram_alloc(MEM_PAGE_SIZE, 0, MEM_OWNER_TEST, "test-c");

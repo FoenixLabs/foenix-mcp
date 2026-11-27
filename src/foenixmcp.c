@@ -200,8 +200,9 @@ static void hw_initialize(void) {
     mem_sdram_init();
 
 #if MODEL == MODEL_FOENIX_A2560K
-    /* 2.1.0: the network pool, right below the MCP's RAM ($0038_0000 - $0039_FFFF). Taken before
-     * anything else can reserve memory, so it is always at the same place (see netpool.h). */
+    /* The network pool: 2.2.0 the first SDRAM block ($0200_0000 - $0201_FFFF); before, right below
+     * the MCP's RAM ($0038_0000 - $0039_FFFF). Taken before anything else, so it is always at the
+     * same place (see netpool.h). */
     netpool_init();
 #endif
 

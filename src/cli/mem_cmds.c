@@ -315,7 +315,7 @@ short mem_cmd_mem(short channel, int argc, const char * argv[]) {
 #ifdef MEM_HAS_LAYOUT
     mem_line(channel, 0, (uint32_t)__USER_STACK, "vectors, MCP variables, program stack");
     mem_line(channel, (uint32_t)__USER_STACK, ramtop, "free for programs");
-    mem_line(channel, ramtop, (uint32_t)__memory_start, "reserved (network pool, sys_mem_reserve)");
+    mem_line(channel, ramtop, (uint32_t)__memory_start, "reserved (sys_mem_reserve)");
     mem_line(channel, (uint32_t)__memory_start, info.system_ram_size, "MCP: data, heap, stack");
 #else
     sprintf(line, "  programs may use RAM up to $%08lX\n", (unsigned long)ramtop);
