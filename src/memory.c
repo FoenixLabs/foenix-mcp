@@ -238,3 +238,104 @@ short mem_sdram_get_block(short index, p_mem_block block) {
     *block = mem_blocks[index];
     return 0;
 }
+
+/*
+ * 2.2.0: SDRAM for programs (sys_mem_alloc / sys_mem_free / sys_mem_info).
+ *
+ * Each running program has a level: 1 for a program started from the command line, 2 for a
+ * program that one starts, and so on. Its blocks are owned by its level, so they can all be
+ * freed when it ends, however it ends. Calls made by the MCP itself (level 0) get MCP blocks.
+ */
+#define MEM_NAMED_LEVELS    8           /* Levels whose program name is kept for MEM */
+
+static uint8_t mem_level = 0;
+static char mem_level_name[MEM_NAMED_LEVELS + 1][MEM_NAME_SIZE];
+
+void mem_program_start(const char * path) {
+    const char * name = path;
+    const char * p;
+
+    if (mem_level < MEM_OWNER_LAST_LEVEL) {
+        mem_level++;
+    }
+    if (mem_level <= MEM_NAMED_LEVELS) {
+        /* Only the file name: "/sd/bin/hello.pgz" -> "hello.pgz" (cut to 10 characters) */
+        for (p = path; p && *p; p++) {
+            if (*p == '/' || *p == ':') {
+                name = p + 1;
+            }
+        }
+        strncpy(mem_level_name[mem_level], name ? name : "", MEM_NAME_SIZE - 1);
+        mem_level_name[mem_level][MEM_NAME_SIZE - 1] = 0;
+    }
+}
+
+void mem_program_end(void) {
+    if (mem_level > 0) {
+        mem_sdram_free_owner(mem_level);
+        mem_level--;
+    }
+}
+
+void mem_program_reset(void) {
+    short i = 0;
+
+    /* Every block of any program level; kept, TEST and MCP blocks stay */
+    while (i < mem_block_count) {
+        if (mem_blocks[i].owner >= 1 && mem_blocks[i].owner <= MEM_OWNER_LAST_LEVEL) {
+            block_remove(i);
+        } else {
+            i++;
+        }
+    }
+    mem_level = 0;
+}
+
+uint32_t mem_sys_alloc(uint32_t size, uint16_t flags) {
+    uint8_t owner;
+    const char * name;
+
+    if (mem_level == 0) {
+        owner = MEM_OWNER_MCP;
+        name = "MCP";
+    } else {
+        owner = (flags & MEM_KEEP) ? MEM_OWNER_KEPT : mem_level;
+        name = (mem_level <= MEM_NAMED_LEVELS) ? mem_level_name[mem_level] : "program";
+    }
+    return mem_sdram_alloc(size, flags & MEM_CLEAR, owner, name);
+}
+
+short mem_sys_free(uint32_t address) {
+    short i;
+
+    for (i = 0; i < mem_block_count; i++) {
+        if (mem_blocks[i].start == address) {
+            uint8_t owner = mem_blocks[i].owner;
+            /* The running program's own blocks and kept blocks; at level 0 the MCP's own */
+            if (owner == MEM_OWNER_KEPT || (mem_level > 0 && owner == mem_level) ||
+                (mem_level == 0 && owner == MEM_OWNER_MCP)) {
+                block_remove(i);
+                return 0;
+            }
+            return ERR_PROTECTED_MEMORY;
+        }
+    }
+    return ERR_NOT_FOUND;
+}
+
+short mem_sys_info(p_mem_info info) {
+    t_mem_sdram_info sdram;
+
+    if (info == 0) {
+        return ERR_BAD_ARGUMENT;
+    }
+    mem_sdram_get_info(&sdram);
+    info->sdram_base = sdram.base;
+    info->sdram_size = sdram.size;
+    info->sdram_free = sdram.free;
+    info->sdram_largest = sdram.largest_free;
+    info->ram_top = mem_top_of_ram;
+    info->blocks = sdram.blocks;
+    info->max_blocks = MEM_MAX_BLOCKS;
+    return 0;
+}

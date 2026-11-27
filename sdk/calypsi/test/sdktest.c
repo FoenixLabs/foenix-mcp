@@ -9,6 +9,8 @@
  * - sys_time_getrtc, sys_txt_get_sizes, sys_err_message
  * - sys_txt_topbar: text in the top bar until the program ends
  * - stdio (printf, fopen): Calypsi's library calls the MCP through the same functions
+ * - 2.2.0: sys_mem_info, sys_mem_alloc, sys_mem_free (SDRAM blocks). One block is left on purpose:
+ *   the MCP frees it when the program ends (TEST SDRAM then shows 0 blocks in use)
  */
 
 #include <stdio.h>
@@ -27,6 +29,55 @@ static void show_result(const char * name, short result) {
     } else {
         printf("%-22s %d\n", name, result);
     }
+}
+
+/*
+ * 2.2.0: the SDRAM system calls. Prints what came back and "ok" / "WRONG" for what can be checked.
+ *
+ * Input:  none
+ * Output: none. One block is not freed on purpose: the MCP frees it when the program ends.
+ */
+static void test_sdram(void) {
+    t_mem_info mem, after;
+    unsigned long a, k;
+    unsigned char * p;
+    unsigned long i;
+    short zero = 1;
+
+    show_result("sys_mem_info", sys_mem_info(&mem));
+    printf("  SDRAM at %08lX, %lu KB, %lu KB free, largest %lu KB, %u of %u blocks, RAM top %08lX\n",
+           (unsigned long)mem.sdram_base, (unsigned long)(mem.sdram_size / 1024),
+           (unsigned long)(mem.sdram_free / 1024), (unsigned long)(mem.sdram_largest / 1024),
+           mem.blocks, mem.max_blocks, (unsigned long)mem.ram_top);
+    if (mem.sdram_size == 0) {
+        printf("  no SDRAM: sys_mem_alloc gives %lu (should be 0)\n", sys_mem_alloc(1, 0));
+        return;
+    }
+
+    /* A cleared block of 10000 bytes: 3 pages */
+    a = sys_mem_alloc(10000, MEM_CLEAR);
+    for (p = (unsigned char *)a, i = 0; a && i < 3 * MEM_PAGE_SIZE; i++) {
+        if (p[i] != 0) {
+            zero = 0;
+        }
+    }
+    if (a) {
+        p[0] = 0x5A;
+        p[3 * MEM_PAGE_SIZE - 1] = 0xA5;
+    }
+    printf("sys_mem_alloc          %08lX %s\n", a,
+           (a && (a % MEM_PAGE_SIZE) == 0 && zero && p[0] == 0x5A && p[3 * MEM_PAGE_SIZE - 1] == 0xA5) ?
+           "ok (page, zeroes, written)" : "WRONG");
+
+    /* A kept block: this program may free it too */
+    k = sys_mem_alloc(1, MEM_KEEP);
+    printf("sys_mem_alloc (keep)   %08lX %s\n", k, k ? "ok" : "WRONG");
+    sys_mem_info(&after);
+    printf("  blocks in use        %u %s\n", after.blocks, after.blocks == mem.blocks + 2 ? "ok" : "WRONG");
+    show_result("sys_mem_free (keep)", sys_mem_free(k));
+    show_result("sys_mem_free (wrong)", sys_mem_free(a + 4));
+    printf("  (should be error -17, not found)\n");
+    printf("  block %08lX is left for the MCP to free at the end\n\n", a);
 }
 
 /*
@@ -118,6 +169,9 @@ int main(int argc, char * argv[]) {
     } else {
         printf("stdio file             fopen failed\n");
     }
+
+    /* 2.2.0: SDRAM blocks */
+    test_sdram();
 
     printf("\nPress a key (the top bar text goes when the program ends)\n");
     sys_chan_read_b(0);

@@ -224,6 +224,15 @@ ASMCALL unsigned long syscall_dispatch(int32_t function, int32_t param0, int32_t
                 case KFN_MEM_RESERVE:
                     return mem_reserve((unsigned long)param0);
 
+                case KFN_MEM_ALLOC:     /* 2.2.0: SDRAM blocks */
+                    return mem_sys_alloc((uint32_t)param0, (uint16_t)param1);
+
+                case KFN_MEM_FREE:
+                    return mem_sys_free((uint32_t)param0);
+
+                case KFN_MEM_INFO:
+                    return mem_sys_info((p_mem_info)param0);
+
                 case KFN_VAR_SET:
                     return var_set((const char *)param0, (const char *)param1);
 

@@ -60,7 +60,8 @@ extern uint32_t mem_reserve(uint32_t bytes);
 #define MEM_OWNER_KEPT      0xFE        /* Stays after the program ends (MEM_KEEP) */
 #define MEM_OWNER_MCP       0xFF        /* The MCP's own blocks */
 
-/* Flags for mem_sdram_alloc */
+/* Flags for mem_sdram_alloc and sys_mem_alloc */
+#define MEM_KEEP            0x0001      /* sys_mem_alloc: the block stays after the program ends */
 #define MEM_CLEAR           0x0002      /* Fill the block with zeroes */
 
 /* One block in use */
@@ -129,5 +130,61 @@ extern void mem_sdram_get_info(p_mem_sdram_info info);
  * Output: 0, or ERR_NOT_FOUND after the last block
  */
 extern short mem_sdram_get_block(short index, p_mem_block block);
+
+/*
+ * 2.2.0: the answer of sys_mem_info (the same layout as in the SDK's mcp/types.h). The SDRAM is
+ * reported here and not in t_sys_info, so programs built for an older MCP keep working.
+ */
+typedef struct s_mem_info {
+    uint32_t sdram_base;                /* First byte of the SDRAM; 0: this machine has none */
+    uint32_t sdram_size;                /* Bytes of SDRAM (0: none) */
+    uint32_t sdram_free;                /* Bytes of SDRAM not in a block */
+    uint32_t sdram_largest;             /* The largest block sys_mem_alloc can give now */
+    uint32_t ram_top;                   /* The top of the system RAM programs may use (sys_mem_get_ramtop) */
+    uint16_t blocks;                    /* SDRAM blocks in use */
+    uint16_t max_blocks;                /* SDRAM blocks the MCP can keep track of */
+} t_mem_info, *p_mem_info;
+
+/*
+ * mem_program_start - a program is about to run (proc_run): its SDRAM blocks get a new level
+ * Input:  path = the program's path (its file name becomes the name of its blocks)
+ * Output: none
+ */
+extern void mem_program_start(const char * path);
+
+/*
+ * mem_program_end - a program has ended (returned, or called sys_exit): free its blocks
+ * Input: none   Output: none
+ */
+extern void mem_program_end(void);
+
+/*
+ * mem_program_reset - the command line was restarted after a crash: free the blocks of every
+ * program that was running (kept blocks stay)
+ * Input: none   Output: none
+ */
+extern void mem_program_reset(void);
+
+/*
+ * mem_sys_alloc - sys_mem_alloc: a block of SDRAM for the running program
+ * Input:  size = bytes wanted; flags = MEM_KEEP and / or MEM_CLEAR
+ * Output: the block's address (on a page boundary), or 0 if there is no room or no SDRAM
+ */
+extern uint32_t mem_sys_alloc(uint32_t size, uint16_t flags);
+
+/*
+ * mem_sys_free - sys_mem_free: give a block back
+ * Input:  address = what sys_mem_alloc returned
+ * Output: 0; ERR_NOT_FOUND if no block starts there; ERR_PROTECTED_MEMORY if the block belongs
+ *         to the MCP or to another program (a kept block may be freed by anyone)
+ */
+extern short mem_sys_free(uint32_t address);
+
+/*
+ * mem_sys_info - sys_mem_info: how much SDRAM there is and how much is free
+ * Input:  info = where to put the answer
+ * Output: 0, or ERR_BAD_ARGUMENT if info is 0
+ */
+extern short mem_sys_info(p_mem_info info);
 
 #endif

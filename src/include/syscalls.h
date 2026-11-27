@@ -19,6 +19,7 @@
 #include "dev/fsys.h"
 #include "dev/rtc.h"
 #include "dev/txt_screen.h"
+#include "memory.h"
 
 /*
  * Define the machine-specific system call function prefix
@@ -102,6 +103,9 @@
 #define KFN_ELEVATE             0x43    /* Switch the user process to a full privilege (2.1.0: refused, ERR_NOT_SUPPORTED) */
 #define KFN_VAR_SET             0x44    /* Set the value of a system variable */
 #define KFN_VAR_GET             0x45    /* Get the value of a system variable */
+#define KFN_MEM_ALLOC           0x46    /* 2.2.0: Get a block of SDRAM */
+#define KFN_MEM_FREE            0x47    /* 2.2.0: Give a block of SDRAM back */
+#define KFN_MEM_INFO            0x48    /* 2.2.0: How much SDRAM there is and how much is free */
 
 /* Misc calls */
 
@@ -734,6 +738,28 @@ extern SYSTEMCALL unsigned long sys_mem_get_ramtop();
  * @return address of the first byte of the reserved block
  */
 extern SYSTEMCALL unsigned long sys_mem_reserve(unsigned long bytes);
+
+/*
+ * 2.2.0: sys_mem_alloc - get a block of SDRAM (whole 4 KB pages)
+ * Input:  size = bytes wanted; flags = MEM_KEEP (the block stays after the program ends; without
+ *         it the MCP frees the block when the program ends or crashes) and / or MEM_CLEAR (zeroes)
+ * Output: the block's address, or 0 if there is no room or the machine has no SDRAM
+ */
+extern SYSTEMCALL unsigned long sys_mem_alloc(unsigned long size, unsigned short flags);
+
+/*
+ * 2.2.0: sys_mem_free - give a block of SDRAM back
+ * Input:  address = what sys_mem_alloc returned
+ * Output: 0; ERR_NOT_FOUND if no block starts there; ERR_PROTECTED_MEMORY if it is not the program's
+ */
+extern SYSTEMCALL short sys_mem_free(unsigned long address);
+
+/*
+ * 2.2.0: sys_mem_info - how much SDRAM there is and how much is free
+ * Input:  info = where to put the answer (t_mem_info, memory.h)
+ * Output: 0, or ERR_BAD_ARGUMENT
+ */
+extern SYSTEMCALL short sys_mem_info(p_mem_info info);
 
 /*
  * Miscellaneous
