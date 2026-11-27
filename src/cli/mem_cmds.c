@@ -11,6 +11,7 @@
 #include "syscalls.h"
 #include "types.h"
 #include "mem_cmds.h"
+#include "memory.h"
 
 /* Pointer to a function taking void and returning void */
 typedef void (*p_thunk)();
@@ -226,3 +227,97 @@ short mem_cmd_peek16_hex(short channel, int argc, const char * argv[]) { return 
  */
 short mem_cmd_peek32(short channel, int argc, const char * argv[])     { return mem_peek(channel, argc, argv, 4, 0); }
 short mem_cmd_peek32_hex(short channel, int argc, const char * argv[]) { return mem_peek(channel, argc, argv, 4, 1); }
+
+/*
+ * 2.2.0: MEM - what the memory is used for: the parts of the system RAM, and every SDRAM block
+ * with its owner and name.
+ */
+
+#if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X
+/* From the linker script and the start-up code: where programs start, where the MCP's RAM starts */
+extern char __USER_STACK[];
+extern char __memory_start[];
+#define MEM_HAS_LAYOUT 1
+#endif
+
+/*
+ * mem_line - print one line of the system RAM layout: "  $start - $end  size KB  what"
+ * Input:  channel; start = first byte; end = one past the last byte; what = what is there
+ * Output: none (nothing for an empty area)
+ */
+static void mem_line(short channel, uint32_t start, uint32_t end, const char * what) {
+    char line[100];
+
+    if (end > start) {
+        sprintf(line, "  $%08lX - $%08lX %7lu KB  %s\n", (unsigned long)start, (unsigned long)(end - 1),
+                (unsigned long)((end - start) / 1024), what);
+        print(channel, line);
+    }
+}
+
+/*
+ * mem_owner_name - an SDRAM block's owner, for people
+ * Input:  owner = MEM_OWNER_xxx or a program level; text = room for 16 characters
+ * Output: text
+ */
+static const char * mem_owner_name(uint8_t owner, char * text) {
+    switch (owner) {
+        case MEM_OWNER_MCP:     return "MCP";
+        case MEM_OWNER_KEPT:    return "kept";
+        case MEM_OWNER_TEST:    return "TEST";
+        default:
+            sprintf(text, "program %u", (unsigned)owner);
+            return text;
+    }
+}
+
+/*
+ * MEM - print what the system RAM and the SDRAM are used for
+ * Input:  channel, argc, argv as for every command (MEM takes no arguments)
+ * Output: 0
+ */
+short mem_cmd_mem(short channel, int argc, const char * argv[]) {
+    char line[100];
+    char owner[16];
+    t_sys_info info;
+    t_mem_sdram_info sdram;
+    t_mem_block block;
+    uint32_t ramtop = mem_get_ramtop();
+    short i;
+
+    TRACE("mem_cmd_mem");
+
+    sys_get_info(&info);
+    sprintf(line, "System RAM: %lu KB\n", (unsigned long)(info.system_ram_size / 1024));
+    print(channel, line);
+#ifdef MEM_HAS_LAYOUT
+    mem_line(channel, 0, (uint32_t)__USER_STACK, "vectors, MCP variables, program stack");
+    mem_line(channel, (uint32_t)__USER_STACK, ramtop, "free for programs");
+    mem_line(channel, ramtop, (uint32_t)__memory_start, "reserved (network pool, sys_mem_reserve)");
+    mem_line(channel, (uint32_t)__memory_start, info.system_ram_size, "MCP: data, heap, stack");
+#else
+    sprintf(line, "  programs may use RAM up to $%08lX\n", (unsigned long)ramtop);
+    print(channel, line);
+#endif
+
+    mem_sdram_get_info(&sdram);
+    if (sdram.size == 0) {
+        print(channel, "No SDRAM.\n");
+        return 0;
+    }
+    sprintf(line, "\nSDRAM: %lu KB at $%08lX, %lu KB free (largest %lu KB), %u of %u blocks\n",
+            (unsigned long)(sdram.size / 1024), (unsigned long)sdram.base, (unsigned long)(sdram.free / 1024),
+            (unsigned long)(sdram.largest_free / 1024), (unsigned)sdram.blocks, (unsigned)MEM_MAX_BLOCKS);
+    print(channel, line);
+    if (sdram.blocks > 0) {
+        print(channel, "  Start - End                 Size  Owner       Name\n");
+        for (i = 0; mem_sdram_get_block(i, &block) == 0; i++) {
+            sprintf(line, "  $%08lX - $%08lX %7lu KB  %-10s  %s\n", (unsigned long)block.start,
+                    (unsigned long)(block.start + block.pages * MEM_PAGE_SIZE - 1),
+                    (unsigned long)(block.pages * MEM_PAGE_SIZE / 1024), mem_owner_name(block.owner, owner),
+                    block.name);
+            print(channel, line);
+        }
+    }
+    return 0;
+}

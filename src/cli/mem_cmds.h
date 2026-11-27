@@ -98,4 +98,11 @@ extern short mem_cmd_peek32_hex(short channel, int argc, const char * argv[]);
  */
 extern short mem_cmd_call(short channel, int argc, const char * argv[]);
 
+/*
+ * 2.2.0: MEM - print what the system RAM and the SDRAM are used for (every SDRAM block with its
+ * owner and name)
+ * Input:  channel, argc, argv as for every command   Output: 0
+ */
+extern short mem_cmd_mem(short channel, int argc, const char * argv[]);
+
 #endif
