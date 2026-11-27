@@ -43,6 +43,13 @@ extern short mem_cmd_poke8(short channel, int argc, const char * argv[]);
 extern short mem_cmd_peek8(short channel, int argc, const char * argv[]);
 
 /*
+ * Read an 8-bit byte from memory and display it in hex ($ and leading zeros)
+ *
+ * PEEK8$ <address>
+ */
+extern short mem_cmd_peek8_hex(short channel, int argc, const char * argv[]);
+
+/*
  * Write an 16-bit word to memory
  *
  * POKE16 <address> <value>
@@ -57,6 +64,13 @@ extern short mem_cmd_poke16(short channel, int argc, const char * argv[]);
 extern short mem_cmd_peek16(short channel, int argc, const char * argv[]);
 
 /*
+ * Read an 16-bit word from memory and display it in hex ($ and leading zeros)
+ *
+ * PEEK16$ <address>
+ */
+extern short mem_cmd_peek16_hex(short channel, int argc, const char * argv[]);
+
+/*
  * Write an 32-bit long word to memory
  *
  * POKE32 <address> <value>
@@ -69,6 +83,13 @@ extern short mem_cmd_poke32(short channel, int argc, const char * argv[]);
  * PEEK32 <address>
  */
 extern short mem_cmd_peek32(short channel, int argc, const char * argv[]);
+
+/*
+ * Read an 32-bit long word from memory and display it in hex ($ and leading zeros)
+ *
+ * PEEK32$ <address>
+ */
+extern short mem_cmd_peek32_hex(short channel, int argc, const char * argv[]);
 
 /*
  * Command to start execution in supervisor mode at a location in memory:
