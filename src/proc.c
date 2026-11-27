@@ -145,7 +145,12 @@ short proc_run(const char * path, int argc, char * argv[]) {
     /* TODO: allocate stack more dynamically */
 
     long start = 0;
-    short result = fsys_load(path, 0, &start);
+    short result;
+
+    /* 2.2.0: the program's level starts before the load, so SDRAM the load claims is the
+       program's and is freed when it ends (or here, when it cannot run) */
+    mem_program_start(path);
+    result = fsys_load(path, 0, &start);
     if (result == 0) {
         if (start != 0) {
             /* 2.1.0: while the program runs, the top bar of the console screen shows its path.
@@ -161,9 +166,8 @@ short proc_run(const char * path, int argc, char * argv[]) {
 
             /* 2.1.0: the sockets the program leaves open are closed when it ends */
             net_program_start();
-            mem_program_start(path);    /* 2.2.0: and the SDRAM blocks it did not keep are freed */
             proc_exec(start, k_default_stack, argc, argv);
-            mem_program_end();
+            mem_program_end();          /* 2.2.0: the SDRAM blocks it did not keep are freed */
             net_program_end();
 
             topbar_set_user(screen, 0);
@@ -171,10 +175,12 @@ short proc_run(const char * path, int argc, char * argv[]) {
             return 0;
         } else {
             ERROR1("Couldn't execute file: %d", result);
+            mem_program_end();
             return ERR_NOT_EXECUTABLE;
         }
     } else {
         ERROR1("Couldn't load file: %d", result);
+        mem_program_end();
         return result;
     }
 }

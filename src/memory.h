@@ -187,4 +187,36 @@ extern short mem_sys_free(uint32_t address);
  */
 extern short mem_sys_info(p_mem_info info);
 
+/*
+ * 2.2.0: loading files into SDRAM (dev/fsys.c). A load claims the free SDRAM it writes; it may also
+ * write blocks that already belong to its owner (a program loading into its own sys_mem_alloc
+ * block), but never another owner's block. Owner: the running program, so the area is freed when it
+ * ends; for a LOAD typed at the command line (no program), a kept block named after the file.
+ *
+ * mem_load_begin - a file load starts
+ * Input:  path = the file (its name becomes the name of the blocks)   Output: none
+ */
+extern void mem_load_begin(const char * path);
+
+/*
+ * mem_load_check - may the load write this memory? Claims the free SDRAM pages in it.
+ * Input:  address, count = what the loader wants to write
+ * Output: 0 (also for memory outside the SDRAM: the caller checks that), or ERR_PROTECTED_MEMORY
+ *         if part of it is another owner's block, runs past the SDRAM, or the block table is full
+ */
+extern short mem_load_check(uint32_t address, uint32_t count);
+
+/*
+ * mem_load_end - the file load is over
+ * Input:  ok = 1 if the file loaded; 0 frees the SDRAM the load claimed   Output: none
+ */
+extern void mem_load_end(short ok);
+
+/*
+ * mem_free_kept - MEM FREE: give back a kept block
+ * Input:  address = the block's first byte
+ * Output: 0; ERR_NOT_FOUND if no block starts there; ERR_PROTECTED_MEMORY if it is not a kept block
+ */
+extern short mem_free_kept(uint32_t address);
+
 #endif

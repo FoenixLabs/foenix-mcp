@@ -3,7 +3,9 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include "log.h"
+#include "errors.h"
 #include "cache.h"
 #include "cli.h"
 #include "simpleio.h"
@@ -273,8 +275,9 @@ static const char * mem_owner_name(uint8_t owner, char * text) {
 
 /*
  * MEM - print what the system RAM and the SDRAM are used for
- * Input:  channel, argc, argv as for every command (MEM takes no arguments)
- * Output: 0
+ * MEM FREE <address> - give back a kept block
+ * Input:  channel, argc, argv as for every command
+ * Output: 0, or a negative error (MEM FREE: ERR_NOT_FOUND, ERR_PROTECTED_MEMORY)
  */
 short mem_cmd_mem(short channel, int argc, const char * argv[]) {
     char line[100];
@@ -286,6 +289,25 @@ short mem_cmd_mem(short channel, int argc, const char * argv[]) {
     short i;
 
     TRACE("mem_cmd_mem");
+
+    /* MEM FREE <address>: give back a kept block (a LOAD at the command line, or MEM_KEEP) */
+    if (argc == 3 && (strcmp(argv[1], "FREE") == 0 || strcmp(argv[1], "free") == 0)) {
+        uint32_t address = (uint32_t)cli_eval_number(argv[2]);
+        short result = mem_free_kept(address);
+        if (result == ERR_NOT_FOUND) {
+            sprintf(line, "No SDRAM block starts at $%08lX (see MEM).\n", (unsigned long)address);
+        } else if (result == ERR_PROTECTED_MEMORY) {
+            sprintf(line, "The block at $%08lX is not a kept block: its owner frees it.\n", (unsigned long)address);
+        } else {
+            sprintf(line, "Block at $%08lX freed.\n", (unsigned long)address);
+        }
+        print(channel, line);
+        return result;
+    }
+    if (argc > 1) {
+        print(channel, "USAGE: MEM [FREE <address>]\n");
+        return -1;
+    }
 
     sys_get_info(&info);
     sprintf(line, "System RAM: %lu KB\n", (unsigned long)(info.system_ram_size / 1024));
