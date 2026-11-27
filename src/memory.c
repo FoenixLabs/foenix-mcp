@@ -342,3 +342,145 @@ short mem_sys_info(p_mem_info info) {
     info->max_blocks = MEM_MAX_BLOCKS;
     return 0;
 }
+
+/*
+ * 2.2.0: loading files into SDRAM (see memory.h).
+ *
+ * A loader asks for its memory piece by piece (a segment, or 16 KB at a time), so the pieces of one
+ * load that follow each other are merged into one block. The blocks this load made are remembered,
+ * so a failed load can give them back.
+ */
+#define MEM_LOAD_BLOCKS     16          /* Separate blocks one load can make (segments far apart) */
+
+static short mem_load_active = 0;
+static uint8_t mem_load_owner;
+static char mem_load_name[MEM_NAME_SIZE];
+static uint32_t mem_load_made[MEM_LOAD_BLOCKS];   /* start of each block this load made */
+static short mem_load_count = 0;
+
+void mem_load_begin(const char * path) {
+    const char * name = path;
+    const char * p;
+
+    mem_load_active = 1;
+    mem_load_count = 0;
+    mem_load_owner = (mem_level > 0) ? mem_level : MEM_OWNER_KEPT;
+    for (p = path; p && *p; p++) {
+        if (*p == '/' || *p == ':') {
+            name = p + 1;
+        }
+    }
+    strncpy(mem_load_name, name ? name : "", MEM_NAME_SIZE - 1);
+    mem_load_name[MEM_NAME_SIZE - 1] = 0;
+}
+
+/*
+ * load_made - did this load make the block that starts here?
+ * Input: start = a block's first byte   Output: 1 or 0
+ */
+static short load_made(uint32_t start) {
+    short i;
+
+    for (i = 0; i < mem_load_count; i++) {
+        if (mem_load_made[i] == start) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+/*
+ * load_claim_gap - claim one free gap for the load: grow the load's block right below it, or make
+ * a new block
+ * Input:  index = the table place of the first block above the gap; start, end = the gap (pages)
+ * Output: 0, or ERR_PROTECTED_MEMORY (the table, or this load's list, is full)
+ */
+static short load_claim_gap(short index, uint32_t start, uint32_t end) {
+    if (index > 0 && block_end(&mem_blocks[index - 1]) == start && load_made(mem_blocks[index - 1].start)) {
+        mem_blocks[index - 1].pages += (end - start) / MEM_PAGE_SIZE;
+        return 0;
+    }
+    if (mem_load_count >= MEM_LOAD_BLOCKS ||
+        block_insert(index, start, (end - start) / MEM_PAGE_SIZE, mem_load_owner, mem_load_name) == 0) {
+        return ERR_PROTECTED_MEMORY;
+    }
+    mem_load_made[mem_load_count++] = start;
+    return 0;
+}
+
+short mem_load_check(uint32_t address, uint32_t count) {
+    uint32_t start, end, gap;
+    uint8_t owner = mem_load_active ? mem_load_owner : MEM_OWNER_KEPT;
+    short i;
+
+    /* Nothing to do outside the SDRAM */
+    if (count == 0 || SDRAM_SIZE == 0 || address + count <= SDRAM_BASE || address >= SDRAM_BASE + SDRAM_SIZE) {
+        return 0;
+    }
+    /* Partly outside: the rest would be a gap of the address map */
+    if (address < SDRAM_BASE || count > SDRAM_BASE + SDRAM_SIZE - address) {
+        return ERR_PROTECTED_MEMORY;
+    }
+    start = address & ~(MEM_PAGE_SIZE - 1);
+    end = (address + count + MEM_PAGE_SIZE - 1) & ~(MEM_PAGE_SIZE - 1);
+
+    /* First: every block in the area must be the load owner's */
+    for (i = 0; i < mem_block_count; i++) {
+        if (mem_blocks[i].start < end && block_end(&mem_blocks[i]) > start && mem_blocks[i].owner != owner) {
+            return ERR_PROTECTED_MEMORY;
+        }
+    }
+    if (!mem_load_active) {
+        return 0;               /* only checked: nobody to claim it for */
+    }
+
+    /* Then claim the free gaps in it, from low to high */
+    gap = start;
+    for (i = 0; i <= mem_block_count && gap < end; i++) {
+        uint32_t next = (i < mem_block_count) ? mem_blocks[i].start : SDRAM_BASE + SDRAM_SIZE;
+        if (i < mem_block_count && block_end(&mem_blocks[i]) <= gap) {
+            continue;           /* entirely below what is left of the area */
+        }
+        if (next > gap) {
+            uint32_t gap_end = (next < end) ? next : end;
+            short before = mem_block_count;
+            if (load_claim_gap(i, gap, gap_end) != 0) {
+                return ERR_PROTECTED_MEMORY;
+            }
+            if (mem_block_count > before) {
+                i++;            /* the new block took place i: the block above the gap moved up */
+            }
+        }
+        if (i < mem_block_count) {
+            gap = block_end(&mem_blocks[i]);
+        }
+    }
+    return 0;
+}
+
+void mem_load_end(short ok) {
+    short i;
+
+    if (!ok) {
+        for (i = 0; i < mem_load_count; i++) {
+            mem_sdram_free(mem_load_made[i]);
+        }
+    }
+    mem_load_active = 0;
+    mem_load_count = 0;
+}
+
+short mem_free_kept(uint32_t address) {
+    short i;
+
+    for (i = 0; i < mem_block_count; i++) {
+        if (mem_blocks[i].start == address) {
+            if (mem_blocks[i].owner != MEM_OWNER_KEPT) {
+                return ERR_PROTECTED_MEMORY;
+            }
+            block_remove(i);
+            return 0;
+        }
+    }
+    return ERR_NOT_FOUND;
+}

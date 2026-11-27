@@ -986,9 +986,10 @@ short fsys_mkfs(short drive, char * label) {
  *
  * The file formats name their own load addresses, and the loaders used to write
  * there without looking: a program linked for the wrong memory overwrote the
- * MCP's variables or stack and the machine crashed while loading. Only system
- * RAM is guarded; other memory (video RAM, DRAM, I/O) stays allowed, since data
- * files are loaded there on purpose. Models without a known layout allow all.
+ * MCP's variables or stack and the machine crashed while loading. System RAM is
+ * guarded, and 2.2.0: SDRAM too (blocks in use are refused, free pages are claimed
+ * for the load); other memory (video RAM, I/O) stays allowed, since data files are
+ * loaded there on purpose. Models without a known layout allow all of system RAM.
  */
 static short fsys_check_load(unsigned long address, unsigned long count) {
 #if MODEL == MODEL_FOENIX_A2560K || MODEL == MODEL_FOENIX_GENX || MODEL == MODEL_FOENIX_A2560X
@@ -1007,6 +1008,12 @@ static short fsys_check_load(unsigned long address, unsigned long count) {
         return ERR_PROTECTED_MEMORY;
     }
 #endif
+    /* 2.2.0: in SDRAM, the load takes the free pages it writes and may not write another owner's
+       block (memory.c, mem_load_check) */
+    if (mem_load_check(address, count) != 0) {
+        log_num(LOG_ERROR, "load refused, SDRAM in use at: ", address);
+        return ERR_PROTECTED_MEMORY;
+    }
     return 0;
 }
 
@@ -1574,7 +1581,7 @@ static short fsys_load_ext(const char * path, const char * extension, long desti
  * Returns:
  * 0 on success, negative number on error
  */
-short fsys_load(const char * path, long destination, long * start) {
+static short fsys_load_file(const char * path, long destination, long * start) {
     int i;
     char extension[MAX_EXT];
     char spath[MAX_PATH_LEN];
@@ -1659,6 +1666,26 @@ short fsys_load(const char * path, long destination, long * start) {
         }
     }
     return 0;
+}
+
+/*
+ * fsys_load - load a file (a program, or data at a destination)
+ *
+ * Input:  path = the file; destination = where to load it (0: where the file says);
+ *         start = where to put the start address (0 if the file is not a program)
+ * Output: 0, or a negative error
+ *
+ * 2.2.0: around the load, the SDRAM it writes is claimed (mem_load_begin / mem_load_end): for the
+ * running program (or the program about to run), or as a kept block for a LOAD at the command
+ * line. A failed load gives that SDRAM back.
+ */
+short fsys_load(const char * path, long destination, long * start) {
+    short result;
+
+    mem_load_begin(path);
+    result = fsys_load_file(path, destination, start);
+    mem_load_end(result == 0);
+    return result;
 }
 
 /*
