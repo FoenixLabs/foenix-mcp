@@ -7,8 +7,8 @@
  * to the top of system RAM. Memory above top of system RAM is reserved for
  * the kernel and any terminate-stay-resident code the user cares to install.
  *
- * NOTE: this code does not manage video RAM or DRAM (on the A2560K)... only
- * system RAM, where code may be executed.
+ * It does not manage video RAM. 2.2.0: it also hands out the SDRAM in blocks
+ * (mem_sdram_xxx, see memory.h).
  *
  * A2560K, A2560X and GenX: programs may use $0001_0000 up to the top of RAM;
  * below $0001_0000 are the vectors, the MCP's variables and the program's
@@ -18,7 +18,10 @@
  */
 
 #include <stdint.h>
+#include <string.h>
+#include "errors.h"
 #include "memory.h"
+#include "sys_general.h"
 
 uint32_t mem_top_of_ram = 0;
 
@@ -50,4 +53,188 @@ uint32_t mem_get_ramtop() {
 uint32_t mem_reserve(uint32_t bytes) {
     mem_top_of_ram -= bytes;
     return mem_top_of_ram;
+}
+
+/*
+ * 2.2.0: SDRAM blocks (see memory.h).
+ *
+ * The SDRAM window of each machine. No fixed SDRAM address may appear anywhere else, so that a
+ * machine with its SDRAM somewhere else, or with none (a 68000 machine sees only 16 MB), only
+ * needs its own line here. Size 0 means no SDRAM: every allocation returns 0.
+ */
+#if MODEL == MODEL_FOENIX_A2560K
+#define SDRAM_BASE  0x02000000UL        /* 64 MB through MERA, $0200_0000 - $05FF_FFFF */
+#define SDRAM_SIZE  0x04000000UL
+#else
+#define SDRAM_BASE  0UL                 /* No SDRAM known on this machine */
+#define SDRAM_SIZE  0UL
+#endif
+
+/* The blocks in use, sorted by address, so the free space is simply the gaps between them */
+static t_mem_block mem_blocks[MEM_MAX_BLOCKS];
+static short mem_block_count = 0;
+
+/*
+ * block_end - the first byte after a block
+ * Input: block   Output: its end address
+ */
+static uint32_t block_end(const t_mem_block * block) {
+    return block->start + block->pages * MEM_PAGE_SIZE;
+}
+
+/*
+ * block_insert - put a new block into the table at a position, keeping the address order
+ * Input:  index = its place in the table; start, pages, owner, name = the block
+ * Output: start, or 0 if the table is full
+ */
+static uint32_t block_insert(short index, uint32_t start, uint32_t pages, uint8_t owner, const char * name) {
+    t_mem_block * block;
+
+    if (mem_block_count >= MEM_MAX_BLOCKS) {
+        return 0;
+    }
+
+    /* Move the blocks above it up one place (memmove copes with the overlap) */
+    memmove(&mem_blocks[index + 1], &mem_blocks[index], (mem_block_count - index) * sizeof(t_mem_block));
+    mem_block_count++;
+
+    block = &mem_blocks[index];
+    block->start = start;
+    block->pages = pages;
+    block->owner = owner;
+    if (name) {
+        strncpy(block->name, name, MEM_NAME_SIZE - 1);
+        block->name[MEM_NAME_SIZE - 1] = 0;     /* strncpy leaves it open when the name is too long */
+    } else {
+        block->name[0] = 0;
+    }
+    return start;
+}
+
+/*
+ * block_remove - take a block out of the table
+ * Input: index = its place in the table   Output: none
+ */
+static void block_remove(short index) {
+    mem_block_count--;
+    memmove(&mem_blocks[index], &mem_blocks[index + 1], (mem_block_count - index) * sizeof(t_mem_block));
+}
+
+void mem_sdram_init(void) {
+    mem_block_count = 0;
+}
+
+uint32_t mem_sdram_alloc(uint32_t size, uint16_t flags, uint8_t owner, const char * name) {
+    uint32_t pages, gap_start, address;
+    short i;
+
+    /* Checked first, so the rounding below cannot overflow */
+    if (size == 0 || size > SDRAM_SIZE) {
+        return 0;
+    }
+    pages = (size + MEM_PAGE_SIZE - 1) / MEM_PAGE_SIZE;
+
+    /* First fit: the first gap below a block, or above the last block, that is large enough */
+    gap_start = SDRAM_BASE;
+    for (i = 0; i <= mem_block_count; i++) {
+        uint32_t gap_end = (i < mem_block_count) ? mem_blocks[i].start : SDRAM_BASE + SDRAM_SIZE;
+        if (gap_end - gap_start >= pages * MEM_PAGE_SIZE) {
+            address = block_insert(i, gap_start, pages, owner, name);
+            if (address && (flags & MEM_CLEAR)) {
+                memset((void *)address, 0, pages * MEM_PAGE_SIZE);
+            }
+            return address;
+        }
+        if (i < mem_block_count) {
+            gap_start = block_end(&mem_blocks[i]);
+        }
+    }
+    return 0;
+}
+
+uint32_t mem_sdram_claim(uint32_t address, uint32_t size, uint8_t owner, const char * name) {
+    uint32_t start, end;
+    short i;
+
+    /* The area must lie inside the SDRAM (checked before rounding, so nothing overflows) */
+    if (size == 0 || SDRAM_SIZE == 0 || address < SDRAM_BASE || address - SDRAM_BASE >= SDRAM_SIZE ||
+        size > SDRAM_BASE + SDRAM_SIZE - address) {
+        return 0;
+    }
+    start = address & ~(MEM_PAGE_SIZE - 1);
+    end = (address + size + MEM_PAGE_SIZE - 1) & ~(MEM_PAGE_SIZE - 1);
+
+    /* Its place in the table: before the first block that starts at or above it */
+    for (i = 0; i < mem_block_count && mem_blocks[i].start < start; i++) {
+    }
+
+    /* It must not overlap the block below it or the block above it */
+    if (i > 0 && block_end(&mem_blocks[i - 1]) > start) {
+        return 0;
+    }
+    if (i < mem_block_count && mem_blocks[i].start < end) {
+        return 0;
+    }
+    return block_insert(i, start, (end - start) / MEM_PAGE_SIZE, owner, name);
+}
+
+short mem_sdram_free(uint32_t address) {
+    short i;
+
+    for (i = 0; i < mem_block_count; i++) {
+        if (mem_blocks[i].start == address) {
+            block_remove(i);
+            return 0;
+        }
+    }
+    return ERR_NOT_FOUND;
+}
+
+short mem_sdram_free_owner(uint8_t owner) {
+    short i = 0, freed = 0;
+
+    while (i < mem_block_count) {
+        if (mem_blocks[i].owner == owner) {
+            block_remove(i);    /* the next block moves into place i: look at i again */
+            freed++;
+        } else {
+            i++;
+        }
+    }
+    return freed;
+}
+
+void mem_sdram_get_info(p_mem_sdram_info info) {
+    uint32_t gap_start = SDRAM_BASE, used = 0;
+    short i;
+
+    info->base = SDRAM_BASE;
+    info->size = SDRAM_SIZE;
+    info->blocks = mem_block_count;
+    info->largest_free = 0;
+
+    for (i = 0; i <= mem_block_count; i++) {
+        uint32_t gap_end = (i < mem_block_count) ? mem_blocks[i].start : SDRAM_BASE + SDRAM_SIZE;
+        if (gap_end - gap_start > info->largest_free) {
+            info->largest_free = gap_end - gap_start;
+        }
+        if (i < mem_block_count) {
+            used += mem_blocks[i].pages * MEM_PAGE_SIZE;
+            gap_start = block_end(&mem_blocks[i]);
+        }
+    }
+    info->free = SDRAM_SIZE - used;
+
+    /* A full table cannot take another block, however much room there is */
+    if (mem_block_count >= MEM_MAX_BLOCKS) {
+        info->largest_free = 0;
+    }
+}
+
+short mem_sdram_get_block(short index, p_mem_block block) {
+    if (index < 0 || index >= mem_block_count) {
+        return ERR_NOT_FOUND;
+    }
+    *block = mem_blocks[index];
+    return 0;
 }

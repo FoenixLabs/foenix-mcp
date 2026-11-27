@@ -34,6 +34,7 @@
 #include "gabe_reg.h"
 #include "vicky_general.h"
 #include "netpool.h"
+#include "memory.h"
 
 #if MODEL == MODEL_FOENIX_A2560K
 #include "dev/kbd_mo.h"
@@ -1700,6 +1701,144 @@ static short cli_test_background (short screen, int argc, const char * argv[]) {
     return 0;
 }
 
+/*
+ * 2.2.0: TEST SDRAM - check the SDRAM block allocator (memory.c) on the machine itself.
+ *
+ * sdram_check - print one check and count it
+ * Input:  screen = where to print; ok = whether the check passed; what = what was checked;
+ *         passed, total = the counters
+ * Output: none
+ */
+static void sdram_check(short screen, short ok, const char * what, short * passed, short * total) {
+    print(screen, ok ? "  ok    " : "  FAIL  ");
+    print(screen, what);
+    print(screen, "\n");
+    (*total)++;
+    if (ok) {
+        (*passed)++;
+    }
+}
+
+/*
+ * cli_test_sdram - TEST SDRAM: allocate, free and claim blocks with the test owner, check every
+ * answer, and give everything back at the end
+ * Input:  screen, argc, argv as for every TEST   Output: 0 if every check passed, else ERR_GENERAL
+ *
+ * The address checks assume no other blocks are in use (true in 2.2.0 until the network pool
+ * moves to SDRAM); the test says so when it finds other blocks.
+ */
+short cli_test_sdram(short screen, int argc, const char * argv[]) {
+    char message[100];
+    t_mem_sdram_info start, info;
+    t_mem_block block, previous;
+    uint32_t a, b, c, d, e, x;
+    uint32_t * lp;
+    unsigned char * bp;
+    short passed = 0, total = 0, n, i, ok;
+
+    mem_sdram_get_info(&start);
+    sprintf(message, "SDRAM at $%08lX, %lu KB, %lu KB free, %u blocks in use\n",
+            (unsigned long)start.base, (unsigned long)(start.size / 1024), (unsigned long)(start.free / 1024),
+            (unsigned)start.blocks);
+    print(screen, message);
+    if (start.size == 0) {
+        print(screen, "This machine has no SDRAM: nothing to test.\n");
+        return 0;
+    }
+    if (start.blocks != 0) {
+        print(screen, "Other blocks are in use: the address checks below may fail for that reason.\n");
+    }
+
+    /* Allocation: whole pages, one after the other */
+    a = mem_sdram_alloc(1, 0, MEM_OWNER_TEST, "test-a");
+    sdram_check(screen, a == start.base, "1 byte gets the first page", &passed, &total);
+    b = mem_sdram_alloc(5000, 0, MEM_OWNER_TEST, "test-b");
+    sdram_check(screen, b == a + MEM_PAGE_SIZE, "5000 bytes come right after it", &passed, &total);
+    c = mem_sdram_alloc(MEM_PAGE_SIZE, 0, MEM_OWNER_TEST, "test-c");
+    sdram_check(screen, c == b + 2 * MEM_PAGE_SIZE, "...and took 2 pages", &passed, &total);
+    mem_sdram_get_info(&info);
+    sdram_check(screen, info.free == start.free - 4 * MEM_PAGE_SIZE && info.blocks == start.blocks + 3,
+                "free space and block count follow", &passed, &total);
+
+    /* First fit: a freed block is used again */
+    sdram_check(screen, mem_sdram_free(a) == 0, "free the first block", &passed, &total);
+    d = mem_sdram_alloc(100, 0, MEM_OWNER_TEST, "test-d");
+    sdram_check(screen, d == a, "the next block goes into its place", &passed, &total);
+    sdram_check(screen, mem_sdram_free(start.base + 12345) == ERR_NOT_FOUND, "free of a wrong address is refused",
+                &passed, &total);
+
+    /* Claims at fixed addresses */
+    sdram_check(screen, mem_sdram_claim(b + 100, 10, MEM_OWNER_TEST, "over-b") == 0, "a claim over a block is refused",
+                &passed, &total);
+    x = mem_sdram_claim(start.base + 0x01000000UL + 10, 8000, MEM_OWNER_TEST, "claim");
+    ok = (x == start.base + 0x01000000UL);
+    for (i = 0; ok && mem_sdram_get_block(i, &block) == 0; i++) {
+        if (block.start == x) {
+            ok = (block.pages == 2);   /* 10 + 8000 bytes reach into the second page */
+            break;
+        }
+    }
+    sdram_check(screen, ok, "a claim in free space takes whole pages", &passed, &total);
+    sdram_check(screen, mem_sdram_claim(start.base - MEM_PAGE_SIZE, 2 * MEM_PAGE_SIZE, MEM_OWNER_TEST, "low") == 0,
+                "a claim below the SDRAM is refused", &passed, &total);
+    sdram_check(screen, mem_sdram_claim(start.base + start.size - MEM_PAGE_SIZE, 2 * MEM_PAGE_SIZE, MEM_OWNER_TEST,
+                "high") == 0, "a claim past its end is refused", &passed, &total);
+
+    /* Sizes that cannot be given */
+    sdram_check(screen, mem_sdram_alloc(0, 0, MEM_OWNER_TEST, "zero") == 0, "0 bytes are refused", &passed, &total);
+    sdram_check(screen, mem_sdram_alloc(start.size + 1, 0, MEM_OWNER_TEST, "huge") == 0,
+                "more than the SDRAM is refused", &passed, &total);
+
+    /* The memory is real, and MEM_CLEAR clears it */
+    lp = (uint32_t *)c;
+    lp[0] = 0x12345678UL;
+    lp[MEM_PAGE_SIZE / 4 - 1] = 0x9ABCDEF0UL;
+    sdram_check(screen, lp[0] == 0x12345678UL && lp[MEM_PAGE_SIZE / 4 - 1] == 0x9ABCDEF0UL,
+                "a block can be written and read", &passed, &total);
+    memset((void *)c, 0xA5, MEM_PAGE_SIZE);
+    mem_sdram_free(c);
+    e = mem_sdram_alloc(MEM_PAGE_SIZE, MEM_CLEAR, MEM_OWNER_TEST, "test-e");
+    ok = (e == c);
+    for (bp = (unsigned char *)e; ok && bp < (unsigned char *)(e + MEM_PAGE_SIZE); bp++) {
+        if (*bp != 0) {
+            ok = 0;
+        }
+    }
+    sdram_check(screen, ok, "MEM_CLEAR gives a block of zeroes", &passed, &total);
+
+    /* A full table: allocations stop, nothing else breaks */
+    mem_sdram_get_info(&info);
+    n = 0;
+    while (mem_sdram_alloc(1, 0, MEM_OWNER_TEST, "fill")) {
+        n++;
+    }
+    sprintf(message, "the table fills up after %d more blocks", n);
+    sdram_check(screen, n == MEM_MAX_BLOCKS - info.blocks, message, &passed, &total);
+    mem_sdram_get_info(&info);
+    sdram_check(screen, info.largest_free == 0, "a full table reports no room", &passed, &total);
+
+    /* The table stays in address order without overlaps */
+    ok = (mem_sdram_get_block(0, &previous) == 0);
+    for (i = 1; ok && mem_sdram_get_block(i, &block) == 0; i++) {
+        if (block.start < previous.start + previous.pages * MEM_PAGE_SIZE) {
+            ok = 0;
+        }
+        previous = block;
+    }
+    sdram_check(screen, ok, "the blocks are in address order, none overlap", &passed, &total);
+
+    /* Everything back */
+    n = mem_sdram_free_owner(MEM_OWNER_TEST);
+    mem_sdram_get_info(&info);
+    sprintf(message, "freeing by owner gives back all %d test blocks", n);
+    sdram_check(screen, info.free == start.free && info.blocks == start.blocks && info.largest_free == start.largest_free,
+                message, &passed, &total);
+
+    sprintf(message, "TEST SDRAM: %d of %d checks passed\n", passed, total);
+    print(screen, message);
+    return (passed == total) ? 0 : ERR_GENERAL;
+}
+
 const t_cli_test_feature cli_test_features[] = {
     {"ANSI", "ANSI: test the ANSI escape codes", cmd_test_ansi},
     {"BACKGROUND", "BACKGROUND <0xaarrggbb>: set the background color to the give RGB color", cli_test_background},
@@ -1750,6 +1889,7 @@ const t_cli_test_feature cli_test_features[] = {
 #if HAS_FLOPPY
     {"SEEK", "SEEK <track>: move the floppy drive head to a track", cli_test_seek},
 #endif
+    {"SDRAM", "SDRAM: check the SDRAM block allocator (allocate, free, claim; gives all back)", cli_test_sdram},
     {"SID", "SID [EXT|INT]: test the SID sound chips", sid_test},
     {"UART","UART [1|2]: test the serial port",cli_test_uart},
     {"VGE", "VGE: run the VGE board checks (V1 - V5)", cli_test_vge},
