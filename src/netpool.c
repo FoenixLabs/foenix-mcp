@@ -30,15 +30,22 @@ static uint8_t * pool_end = 0;      /* one past the last byte */
 static uint16_t bad_frees = 0;      /* see netpool_free */
 
 /*
- * netpool_init - take the pool from the top of system RAM
+ * netpool_init - take the pool: a block of SDRAM, or the top of system RAM when there is no SDRAM
  *
  * Input:  none
  * Output: none (the pool is one free block)
+ *
+ * 2.2.0: on a machine with SDRAM the pool is an MCP block there (MEM shows it as "FELINC"), so the
+ * 128 KB of system RAM it took before are free for programs again. TFTP was measured with the pool
+ * in both places before this was decided.
  */
 void netpool_init(void) {
     t_block * first;
 
-    pool_start = (uint8_t *)mem_reserve(NETPOOL_SIZE);
+    pool_start = (uint8_t *)mem_sdram_alloc(NETPOOL_SIZE, 0, MEM_OWNER_MCP, "FELINC");
+    if (pool_start == 0) {
+        pool_start = (uint8_t *)mem_reserve(NETPOOL_SIZE);
+    }
     pool_end = pool_start + NETPOOL_SIZE;
 
     first = (t_block *)pool_start;
