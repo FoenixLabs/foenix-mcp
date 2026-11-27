@@ -3,9 +3,16 @@
  * only as debug-port programs (E:\GEN1_ACTIVE_FPGA_Work\host\dactest, gdmatest, blittest; the test code is generated
  * from them by tools/make_g1tests.py). Same checks, same memory areas, same printout as the host scripts.
  *
- * The tests use SDRAM $0300_0000-$04FF_FFFF, SRAM $0010_0000-$0039_FFFF, VRAM A $0050_0000-$007F_FFFF and VRAM B
- * $00A0_0000-$00BF_FFFF. In the flash MCP these areas are free (user programs own SRAM from $400 up); the RAM build of
- * the MCP sits in that SRAM, so the commands refuse to run there.
+ * The tests use SDRAM $0300_0000-$04FF_FFFF, SRAM $0010_0000-$0034_0FFF, VRAM A $0050_0000-$007F_FFFF and VRAM B
+ * $00A0_0000-$00BF_FFFF. In the flash MCP these areas are free (user programs own SRAM from $1_0000 up); the RAM build
+ * of the MCP sits in that SRAM, so the commands refuse to run there.
+ *
+ * 2.2.0: the highest SRAM address is the list area of TEST BLIT ($0034_0000, 8 entries of 64 bytes); the other areas
+ * end below $0031_5000. The "$0038_0000-$003F_FFFF" and "$0038_0200" in the headers of g1t_dac.c, g1t_gdma.c and
+ * g1t_blit.c describe the debug-port programs they come from: in the MCP the results are the arrays g1t_r and g1t_d
+ * (the R() and D() macros), so the tests never touch the network pool at $0038_0000. What can lie in their SRAM is
+ * memory taken with sys_mem_reserve (it grows down from $0038_0000): the tests refuse to run when the top of RAM is
+ * below the end of their SRAM.
  */
 #include <stdio.h>
 #include <string.h>
@@ -23,7 +30,7 @@ static short g1t_from_flash(short ch)
 {
     unsigned long here = (unsigned long)&g1t_from_flash;
     if (here < 0xFFC00000UL) {
-        print(ch, "These tests use SRAM $0010_0000-$0039_FFFF, where the RAM build of the MCP lives: run them from the flash MCP.\n");
+        print(ch, "These tests use SRAM $0010_0000-$0034_0FFF, where the RAM build of the MCP lives: run them from the flash MCP.\n");
         return 0;
     }
     return 1;
@@ -263,16 +270,25 @@ static short g1t_blit_cmd(short ch, int argc, const char * argv[])
  * g1t_sdram_test - claim the tests' SDRAM, run one test, free the SDRAM
  * Input:  ch, argc, argv = the command line; test = the test to run; name = for the refusal and MEM;
  *         last_page = 1 for TEST BLIT, which also blits at the very end of the SDRAM ($05FF_FFF0)
- * Output: the test's result, or -1 if the SDRAM was in use
+ * Output: the test's result, or -1 if the SDRAM was in use or reserved memory reaches into the tests' SRAM
  */
 #define G1T_SDRAM       0x03000000UL    /* $0300_0000 - $04FF_FFFF: every SDRAM area of the three tests */
 #define G1T_SDRAM_SIZE  0x02000000UL
 #define G1T_LAST_PAGE   0x05FFF000UL    /* TEST BLIT's "leaves the SDRAM" check */
+#define G1T_SRAM_END    0x00341000UL    /* one past the tests' SRAM ($0010_0000-$0034_0FFF) */
 
 static short g1t_sdram_test(short ch, int argc, const char * argv[],
                             short (*test)(short, int, const char * []), const char * name, short last_page) {
+    char m[120];
     short result;
 
+    /* Memory taken with sys_mem_reserve lies below the top of RAM: the tests' SRAM must stay under it */
+    if (mem_get_ramtop() < G1T_SRAM_END) {
+        sprintf(m, "%s needs SRAM up to $%08lX, but memory from $%08lX is reserved (see MEM).\n",
+                name, (unsigned long)(G1T_SRAM_END - 1), (unsigned long)mem_get_ramtop());
+        print(ch, m);
+        return -1;
+    }
     if (!mem_test_claim(ch, G1T_SDRAM, G1T_SDRAM_SIZE, name)) {
         return -1;
     }
