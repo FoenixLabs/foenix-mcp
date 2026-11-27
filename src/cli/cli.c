@@ -166,6 +166,7 @@ const t_cli_command g_cli_commands[] = {
     { "LABEL", "LABEL <drive#> <label> : set the label of a drive", cmd_label },
     { "LOAD", "LOAD <path> : load a file into memory", cmd_load },
     { "LS", "LS [-l] [-a] [<path>] : list files; -l: size, date, attributes; -a: hidden too", cmd_ls },
+    { "MEM", "MEM : what the system RAM and the SDRAM are used for (SDRAM blocks with owner and name)", mem_cmd_mem },
     { "MKBOOT", "MKBOOT <drive #> -r | -b <boot sector path> | -s <start file path> : make a drive bootable", cmd_mkboot },
     { "MKDIR", "MKDIR <path> : create a directory", cmd_mkdir },
     { "MOVE", "MOVE <src path> <dst path> : move files or folders (* and ? allowed in the name)", cmd_move },
